@@ -11,6 +11,27 @@ import os
 logger = logging.getLogger(__name__)
 
 SARVAM_API_BASE = "https://api.sarvam.ai"
+_SECRETS_SCOPE = "asha-copilot"
+
+
+def _get_api_key(env_var: str, secret_key: str) -> str:
+    """Retrieve API key: env var first, then Databricks secrets."""
+    val = os.environ.get(env_var, "")
+    if val:
+        return val
+    try:
+        import IPython
+        _ip = IPython.get_ipython()
+        if _ip is not None:
+            _dbutils = _ip.user_ns.get("dbutils")
+            if _dbutils:
+                secret = _dbutils.secrets.get(scope=_SECRETS_SCOPE, key=secret_key)
+                if secret:
+                    os.environ[env_var] = secret
+                    return secret
+    except Exception:
+        pass
+    return ""
 
 # Sarvam language codes
 _SARVAM_LANG = {
@@ -38,8 +59,8 @@ class IndicTranslator:
 
     def __init__(self, model_dir: str = None):
         # model_dir is ignored — Sarvam API is used instead of local ONNX
-        self._sarvam_key = os.environ.get("SARVAM_API_KEY", "")
-        self._hf_key = os.environ.get("HF_TOKEN", "")
+        self._sarvam_key = _get_api_key("SARVAM_API_KEY", "sarvam-api-key")
+        self._hf_key = _get_api_key("HF_TOKEN", "hf-token")
         if not self._sarvam_key:
             logger.warning(
                 "SARVAM_API_KEY not set. Translation will use HF API fallback."
@@ -113,7 +134,7 @@ class IndicTranslator:
             src = _HF_LANG.get(src_lang, src_lang)
             tgt = _HF_LANG.get(tgt_lang, tgt_lang)
             resp = requests.post(
-                "https://api-inference.huggingface.co/models/ai4bharat/indictrans2-indic-en-dist-200M",
+                "https://router.huggingface.co/models/ai4bharat/indictrans2-indic-en-dist-200M",
                 headers={"Authorization": f"Bearer {self._hf_key}"},
                 json={"inputs": text, "parameters": {"src_lang": src, "tgt_lang": tgt}},
                 timeout=15,

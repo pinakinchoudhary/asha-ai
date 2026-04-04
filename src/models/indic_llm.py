@@ -1,8 +1,8 @@
 """
 Unified Indic LLM interface.
 
-Primary: Sarvam AI API (sarvam-m — multilingual, strong Hindi support)
-Fallback: Hugging Face Inference API
+Primary: Sarvam AI API (sarvam-2.0-flash — 30B multilingual, strong Hindi support)
+Fallback: Hugging Face Inference Router API
 """
 
 import json
@@ -12,20 +12,48 @@ import os
 logger = logging.getLogger(__name__)
 
 SARVAM_API_BASE = "https://api.sarvam.ai"
-SARVAM_LLM_MODEL = "sarvam-m"
+SARVAM_LLM_MODEL = "sarvam-2.0-flash"
+_SECRETS_SCOPE = "asha-copilot"
+
+
+def _get_api_key(env_var: str, secret_key: str) -> str:
+    """
+    Retrieve an API key.
+    Priority: environment variable → Databricks secrets scope 'asha-copilot'.
+    Caches the secret in os.environ so subsequent calls are fast.
+    """
+    val = os.environ.get(env_var, "")
+    if val:
+        return val
+    # Try Databricks secrets (dbutils lives in the IPython user namespace)
+    try:
+        import IPython
+        _ip = IPython.get_ipython()
+        if _ip is not None:
+            _dbutils = _ip.user_ns.get("dbutils")
+            if _dbutils:
+                secret = _dbutils.secrets.get(scope=_SECRETS_SCOPE, key=secret_key)
+                if secret:
+                    os.environ[env_var] = secret  # cache for the session
+                    return secret
+    except Exception:
+        pass
+    return ""
 
 
 class IndicLLM:
-    """Wrapper around Sarvam AI API with graceful degradation to HuggingFace."""
+    """Wrapper around Sarvam AI API (sarvam-2.0-flash) with HF fallback."""
 
     def __init__(self, model_path: str = None, n_ctx: int = 2048, n_threads: int = 4):
         # model_path is ignored — Sarvam API is used instead of local GGUF
-        self._sarvam_key = os.environ.get("SARVAM_API_KEY", "")
-        self._hf_key = os.environ.get("HF_TOKEN", "")
+        self._sarvam_key = _get_api_key("SARVAM_API_KEY", "sarvam-api-key")
+        self._hf_key = _get_api_key("HF_TOKEN", "hf-token")
         if not self._sarvam_key:
             logger.warning(
-                "SARVAM_API_KEY not set. Set it via os.environ or Databricks cluster config. "
-                "Falling back to HuggingFace Inference API."
+                "SARVAM_API_KEY not set. Configure via: (1) Databricks secrets scope "
+                "'asha-copilot' key 'sarvam-api-key', or (2) cluster Environment Variables, "
+                "or (3) os.environ['SARVAM_API_KEY'] = '<key>'. "
+                "Falling back to HuggingFace Inference Router API."
             )
 
     @property
@@ -62,35 +90,39 @@ class IndicLLM:
             )
             if resp.status_code == 200:
                 return resp.json()["choices"][0]["message"]["content"].strip()
-            logger.warning(f"Sarvam API returned {resp.status_code}: {resp.text[:200]}")
+            logger.warning(f"Sarvam API returned {resp.status_code}: {resp.text[:300]}")
         except Exception as e:
             logger.warning(f"Sarvam API call failed: {e}")
         return ""
 
     def _generate_hf_fallback(self, prompt: str, max_tokens: int, temperature: float) -> str:
-        """Call HuggingFace Inference API as fallback."""
+        """Call HuggingFace Inference Router as fallback."""
         if not self._hf_key:
             logger.warning("No HF_TOKEN set. Cannot use HF fallback.")
             return ""
         try:
             import requests
             resp = requests.post(
-                f"https://api-inference.huggingface.co/models/ai4bharat/Airavata",
+                "https://router.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3",
                 headers={"Authorization": f"Bearer {self._hf_key}"},
                 json={
                     "inputs": prompt,
                     "parameters": {
                         "max_new_tokens": max_tokens,
                         "temperature": temperature,
+                        "return_full_text": False,
                     },
                 },
                 timeout=30,
             )
             if resp.status_code == 200:
-                return resp.json()[0]["generated_text"].replace(prompt, "").strip()
-            logger.warning(f"HF API returned {resp.status_code}: {resp.text[:200]}")
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    return data[0].get("generated_text", "").strip()
+                return data.get("generated_text", "").strip()
+            logger.warning(f"HF Router returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
-            logger.warning(f"HF API fallback failed: {e}")
+            logger.warning(f"HF Router fallback failed: {e}")
         return ""
 
     def classify_intent(self, text: str) -> str:

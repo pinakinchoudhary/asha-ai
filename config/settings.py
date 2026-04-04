@@ -45,10 +45,10 @@ TRANSLATE_MODEL_DIR = None
 # Set SARVAM_API_KEY in environment or Databricks cluster config
 # ---------------------------------------------------------------------------
 SARVAM_API_BASE = "https://api.sarvam.ai"
-SARVAM_LLM_MODEL = "sarvam-m"
+SARVAM_LLM_MODEL = "sarvam-2.0-flash"  # Sarvam 30B — released 2025
 
 # HuggingFace Inference API (fallback for ASR + LLM if Sarvam unavailable)
-HF_INFERENCE_API = "https://api-inference.huggingface.co/models"
+HF_INFERENCE_API = "https://router.huggingface.co/models"
 
 # Embeddings — sentence-transformers (auto-downloaded by HuggingFace)
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"

@@ -6,7 +6,7 @@
 # MAGIC
 # MAGIC | Component | How | Size |
 # MAGIC |-----------|-----|------|
-# MAGIC | LLM (sarvam-m) | Sarvam AI API | 0 GB local |
+# MAGIC | LLM (sarvam-2.0-flash) | Sarvam AI API | 0 GB local |
 # MAGIC | Translation (Mayura) | Sarvam AI API | 0 GB local |
 # MAGIC | TTS (Bulbul v2) | Sarvam AI API | 0 GB local |
 # MAGIC | ASR (Saarika) | Sarvam AI API | 0 GB local |
@@ -38,12 +38,32 @@ sys.path.insert(0, f"/Workspace{repo_root}")
 
 import os
 
-# Set your API keys here (or configure in cluster Environment Variables)
-os.environ["SARVAM_API_KEY"] = dbutils.secrets.get(scope="asha-copilot", key="sarvam-api-key") if False else os.environ.get("SARVAM_API_KEY", "")
-os.environ["HF_TOKEN"] = dbutils.secrets.get(scope="asha-copilot", key="hf-token") if False else os.environ.get("HF_TOKEN", "")
+# Load secrets from Databricks secret scope (preferred) or cluster env vars
+try:
+    _key = dbutils.secrets.get(scope="asha-copilot", key="sarvam-api-key")
+    os.environ["SARVAM_API_KEY"] = _key
+    print("SARVAM_API_KEY: loaded from Databricks secrets scope 'asha-copilot'")
+except Exception:
+    if os.environ.get("SARVAM_API_KEY"):
+        print("SARVAM_API_KEY: loaded from cluster environment variable")
+    else:
+        print("WARNING: SARVAM_API_KEY not set. "
+              "Add it via: Databricks secrets (scope=asha-copilot, key=sarvam-api-key) "
+              "or cluster Environment Variables.")
 
-print(f"SARVAM_API_KEY set: {'YES' if os.environ.get('SARVAM_API_KEY') else 'NO — set it above!'}")
-print(f"HF_TOKEN set:       {'YES' if os.environ.get('HF_TOKEN') else 'NO (optional fallback)'}")
+try:
+    _tok = dbutils.secrets.get(scope="asha-copilot", key="hf-token")
+    os.environ["HF_TOKEN"] = _tok
+    print("HF_TOKEN:        loaded from Databricks secrets scope 'asha-copilot'")
+except Exception:
+    if os.environ.get("HF_TOKEN"):
+        print("HF_TOKEN:        loaded from cluster environment variable")
+    else:
+        print("HF_TOKEN:        not set (optional — used as LLM/ASR fallback only)")
+
+print()
+print(f"SARVAM_API_KEY ready: {'YES' if os.environ.get('SARVAM_API_KEY') else 'NO'}")
+print(f"HF_TOKEN ready:       {'YES' if os.environ.get('HF_TOKEN') else 'NO (optional)'}")
 
 # COMMAND ----------
 
@@ -134,7 +154,7 @@ print(f"Test vector (first 5): {test_embedding[0][:5].tolist()}")
 print("=" * 60)
 print("SETUP SUMMARY")
 print("=" * 60)
-print(f"  Sarvam AI API (LLM sarvam-m):   {'✓ Connected' if llm.is_loaded else '✗ No API key'}")
+print(f"  Sarvam AI API (sarvam-2.0-flash):{'✓ Connected' if llm.is_loaded else '✗ No API key'}")
 print(f"  Sarvam Translation (Mayura):     {'✓ Connected' if translator.is_loaded else '✗ No API key'}")
 print(f"  Sentence Embeddings (MiniLM):    ✓ Loaded ({test_embedding.shape[1]}-dim)")
 print()

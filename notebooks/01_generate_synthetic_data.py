@@ -48,11 +48,12 @@ for fac in phc_config["phc_facilities"]:
         longitude=float(fac["longitude"]),
         has_blood_bank=fac["has_blood_bank"],
         has_surgery=fac["has_surgery"],
-        beds=fac["beds"],
+        beds=int(fac["beds"]),  # explicit int to avoid Long vs Integer schema mismatch
         villages_served=fac["villages_served"],
     ))
-phc_df = spark.createDataFrame(phc_rows)
-phc_df.write.format("delta").mode("overwrite").saveAsTable("workspace.asha_copilot.phc_facilities")
+from pyspark.sql.functions import col
+phc_df = spark.createDataFrame(phc_rows).withColumn("beds", col("beds").cast("int"))
+phc_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable("workspace.asha_copilot.phc_facilities")
 print(f"PHC Facilities: {phc_df.count()} rows written")
 display(phc_df)
 

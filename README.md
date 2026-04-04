@@ -73,7 +73,7 @@ ASHA Copilot is a voice-first, multilingual field assistant built on the Databri
 |-----------|-----------|-------|
 | **Platform** | Databricks (workspace catalog) | Serverless-compatible |
 | **Storage** | Delta Lake (workspace.asha_copilot) | Unity Catalog |
-| **Primary LLM** | Sarvam-m via Sarvam AI API | Strong Hindi, no local GPU needed |
+| **Primary LLM** | Sarvam-2.0-flash via Sarvam AI API | 30B multilingual model, strong Hindi, no local GPU needed |
 | **Translation** | Sarvam Mayura API | Hindi ↔ English |
 | **ASR** | Sarvam Saarika API | Hindi speech-to-text |
 | **TTS** | Sarvam Bulbul v2 API | Natural Hindi voice |

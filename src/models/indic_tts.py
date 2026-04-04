@@ -12,6 +12,27 @@ import os
 logger = logging.getLogger(__name__)
 
 SARVAM_API_BASE = "https://api.sarvam.ai"
+_SECRETS_SCOPE = "asha-copilot"
+
+
+def _get_api_key(env_var: str, secret_key: str) -> str:
+    """Retrieve API key: env var first, then Databricks secrets."""
+    val = os.environ.get(env_var, "")
+    if val:
+        return val
+    try:
+        import IPython
+        _ip = IPython.get_ipython()
+        if _ip is not None:
+            _dbutils = _ip.user_ns.get("dbutils")
+            if _dbutils:
+                secret = _dbutils.secrets.get(scope=_SECRETS_SCOPE, key=secret_key)
+                if secret:
+                    os.environ[env_var] = secret
+                    return secret
+    except Exception:
+        pass
+    return ""
 
 _SARVAM_LANG = {
     "hi": "hi-IN",
@@ -25,7 +46,7 @@ class IndicTTS:
     """Text-to-speech for Hindi and English."""
 
     def __init__(self):
-        self._api_key = os.environ.get("SARVAM_API_KEY", "")
+        self._api_key = _get_api_key("SARVAM_API_KEY", "sarvam-api-key")
 
     def synthesize(self, text: str, language: str = "hi") -> bytes:
         """
