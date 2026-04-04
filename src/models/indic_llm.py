@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 SARVAM_API_BASE = "https://api.sarvam.ai"
 SARVAM_LLM_MODEL = "sarvam-30b"
-_SECRETS_SCOPE = "asha-copilot"
+_SECRETS_SCOPE = "asha-ai"
 
 
 def _get_api_key(env_var: str, secret_key: str) -> str:
@@ -89,8 +89,12 @@ class IndicLLM:
                 timeout=45,
             )
             if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"].strip()
-            logger.warning(f"Sarvam API returned {resp.status_code}: {resp.text[:300]}")
+                content = resp.json()["choices"][0]["message"].get("content")
+                if content is not None:
+                    return content.strip()
+                logger.warning("Sarvam returned 200 but content is None (possible empty finish)")
+            else:
+                logger.warning(f"Sarvam API returned {resp.status_code}: {resp.text[:300]}")
         except Exception as e:
             logger.warning(f"Sarvam API call failed: {e}")
         return ""
@@ -102,7 +106,7 @@ class IndicLLM:
             return ""
         try:
             import requests
-            # HF Router uses OpenAI-compatible /v1/chat/completions endpoint
+            # HF Router — OpenAI-compatible chat completions
             resp = requests.post(
                 "https://router.huggingface.co/v1/chat/completions",
                 headers={
@@ -110,7 +114,7 @@ class IndicLLM:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "mistralai/Mistral-7B-Instruct-v0.3",
+                    "model": "Qwen/Qwen2.5-7B-Instruct",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": max_tokens,
                     "temperature": temperature,
@@ -118,7 +122,9 @@ class IndicLLM:
                 timeout=30,
             )
             if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"].strip()
+                content = resp.json()["choices"][0]["message"].get("content")
+                if content is not None:
+                    return content.strip()
             logger.warning(f"HF Router returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             logger.warning(f"HF Router fallback failed: {e}")

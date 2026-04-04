@@ -11,7 +11,7 @@ import os
 logger = logging.getLogger(__name__)
 
 SARVAM_API_BASE = "https://api.sarvam.ai"
-_SECRETS_SCOPE = "asha-copilot"
+_SECRETS_SCOPE = "asha-ai"
 
 
 def _get_api_key(env_var: str, secret_key: str) -> str:
