@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data files (user must upload manually)
+data/nhm_protocols/*.pdf
+
+# Model artifacts
+*.gguf
+*.onnx
+*.bin
+*.safetensors
+
+# FAISS index
+*.faiss
+
+# Databricks
+/dbfs/
+.databricks/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Misc
+conversation-*.txt
+*.txt.bak
+.claude/

@@ -1,0 +1,259 @@
+# Synthetic PHC / CHC / FRU facility and doctor registry
+# Used for triage-based doctor + facility assignment
+
+phc_facilities:
+  # --- Uttar Pradesh ---
+  - phc_id: "PHC-001"
+    name: "PHC Rampur"
+    district: "Varanasi"
+    state: "Uttar Pradesh"
+    type: "PHC"
+    latitude: 25.3176
+    longitude: 83.0100
+    has_blood_bank: false
+    has_surgery: false
+    beds: 6
+    villages_served: ["Rampur", "Sultanpur", "Bhadohi", "Chandauli"]
+
+  - phc_id: "CHC-001"
+    name: "CHC Ramnagar"
+    district: "Varanasi"
+    state: "Uttar Pradesh"
+    type: "CHC"
+    latitude: 25.2700
+    longitude: 83.0300
+    has_blood_bank: true
+    has_surgery: false
+    beds: 30
+    villages_served: ["Ramnagar", "Sarnath", "Cholapur", "Kashi Vidyapeeth"]
+
+  - phc_id: "FRU-001"
+    name: "District Hospital Varanasi"
+    district: "Varanasi"
+    state: "Uttar Pradesh"
+    type: "FRU"
+    latitude: 25.3200
+    longitude: 83.0100
+    has_blood_bank: true
+    has_surgery: true
+    beds: 200
+    villages_served: ["ALL"]
+
+  # --- Madhya Pradesh ---
+  - phc_id: "PHC-002"
+    name: "PHC Sehore"
+    district: "Sehore"
+    state: "Madhya Pradesh"
+    type: "PHC"
+    latitude: 23.2050
+    longitude: 77.0861
+    has_blood_bank: false
+    has_surgery: false
+    beds: 6
+    villages_served: ["Sehore", "Ashta", "Ichhawar", "Budni"]
+
+  - phc_id: "FRU-002"
+    name: "District Hospital Sehore"
+    district: "Sehore"
+    state: "Madhya Pradesh"
+    type: "FRU"
+    latitude: 23.2100
+    longitude: 77.0900
+    has_blood_bank: true
+    has_surgery: true
+    beds: 150
+    villages_served: ["ALL"]
+
+  # --- Rajasthan ---
+  - phc_id: "PHC-003"
+    name: "PHC Tonk"
+    district: "Tonk"
+    state: "Rajasthan"
+    type: "PHC"
+    latitude: 26.1664
+    longitude: 75.7885
+    has_blood_bank: false
+    has_surgery: false
+    beds: 6
+    villages_served: ["Tonk", "Deoli", "Uniara", "Malpura"]
+
+  - phc_id: "CHC-002"
+    name: "CHC Deoli"
+    district: "Tonk"
+    state: "Rajasthan"
+    type: "CHC"
+    latitude: 25.9500
+    longitude: 75.3800
+    has_blood_bank: true
+    has_surgery: false
+    beds: 30
+    villages_served: ["Deoli", "Peeplu", "Dooni", "Aligarh"]
+
+  # --- Bihar ---
+  - phc_id: "PHC-004"
+    name: "PHC Phulwari Sharif"
+    district: "Patna"
+    state: "Bihar"
+    type: "PHC"
+    latitude: 25.5800
+    longitude: 85.0700
+    has_blood_bank: false
+    has_surgery: false
+    beds: 6
+    villages_served: ["Phulwari Sharif", "Danapur", "Khagaul", "Maner"]
+
+  - phc_id: "FRU-003"
+    name: "PMCH Patna"
+    district: "Patna"
+    state: "Bihar"
+    type: "FRU"
+    latitude: 25.6100
+    longitude: 85.1400
+    has_blood_bank: true
+    has_surgery: true
+    beds: 500
+    villages_served: ["ALL"]
+
+  - phc_id: "PHC-005"
+    name: "PHC Jehanabad"
+    district: "Jehanabad"
+    state: "Bihar"
+    type: "PHC"
+    latitude: 25.2100
+    longitude: 84.9900
+    has_blood_bank: false
+    has_surgery: false
+    beds: 6
+    villages_served: ["Jehanabad", "Kako", "Ghosi", "Makhdumpur"]
+
+doctors:
+  # --- Varanasi ---
+  - doctor_id: "DOC-001"
+    name: "Dr. Priya Sharma"
+    phc_id: "PHC-001"
+    specialization: "MBBS"
+    phone: "+91-9876543001"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+  - doctor_id: "DOC-002"
+    name: "Dr. Rakesh Verma"
+    phc_id: "PHC-001"
+    specialization: "Obstetrics"
+    phone: "+91-9876543002"
+    available_days: ["Mon", "Wed", "Fri"]
+
+  - doctor_id: "DOC-003"
+    name: "Dr. Anjali Mishra"
+    phc_id: "CHC-001"
+    specialization: "Obstetrics"
+    phone: "+91-9876543003"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+  - doctor_id: "DOC-004"
+    name: "Dr. Sanjay Gupta"
+    phc_id: "CHC-001"
+    specialization: "Pediatrics"
+    phone: "+91-9876543004"
+    available_days: ["Mon", "Tue", "Thu", "Fri"]
+
+  - doctor_id: "DOC-005"
+    name: "Dr. Meena Tripathi"
+    phc_id: "FRU-001"
+    specialization: "Obstetrics & Gynecology"
+    phone: "+91-9876543005"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+  - doctor_id: "DOC-006"
+    name: "Dr. Arun Kumar"
+    phc_id: "FRU-001"
+    specialization: "Neonatology"
+    phone: "+91-9876543006"
+    available_days: ["Mon", "Wed", "Fri", "Sat"]
+
+  # --- Sehore ---
+  - doctor_id: "DOC-007"
+    name: "Dr. Kavita Gond"
+    phc_id: "PHC-002"
+    specialization: "MBBS"
+    phone: "+91-9876543007"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+  - doctor_id: "DOC-008"
+    name: "Dr. Ramesh Malviya"
+    phc_id: "PHC-002"
+    specialization: "MBBS"
+    phone: "+91-9876543008"
+    available_days: ["Tue", "Thu", "Sat"]
+
+  - doctor_id: "DOC-009"
+    name: "Dr. Sunita Patel"
+    phc_id: "FRU-002"
+    specialization: "Obstetrics & Gynecology"
+    phone: "+91-9876543009"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+  # --- Tonk ---
+  - doctor_id: "DOC-010"
+    name: "Dr. Lakshmi Meena"
+    phc_id: "PHC-003"
+    specialization: "MBBS"
+    phone: "+91-9876543010"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+  - doctor_id: "DOC-011"
+    name: "Dr. Rajesh Gurjar"
+    phc_id: "CHC-002"
+    specialization: "Obstetrics"
+    phone: "+91-9876543011"
+    available_days: ["Mon", "Wed", "Fri", "Sat"]
+
+  - doctor_id: "DOC-012"
+    name: "Dr. Nirmala Jat"
+    phc_id: "CHC-002"
+    specialization: "Pediatrics"
+    phone: "+91-9876543012"
+    available_days: ["Tue", "Thu", "Sat"]
+
+  # --- Patna ---
+  - doctor_id: "DOC-013"
+    name: "Dr. Pooja Kumari"
+    phc_id: "PHC-004"
+    specialization: "MBBS"
+    phone: "+91-9876543013"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+  - doctor_id: "DOC-014"
+    name: "Dr. Vikash Yadav"
+    phc_id: "PHC-004"
+    specialization: "MBBS"
+    phone: "+91-9876543014"
+    available_days: ["Mon", "Wed", "Fri"]
+
+  - doctor_id: "DOC-015"
+    name: "Dr. Ritu Singh"
+    phc_id: "FRU-003"
+    specialization: "Obstetrics & Gynecology"
+    phone: "+91-9876543015"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+  - doctor_id: "DOC-016"
+    name: "Dr. Amitabh Prasad"
+    phc_id: "FRU-003"
+    specialization: "Neonatology"
+    phone: "+91-9876543016"
+    available_days: ["Mon", "Tue", "Thu", "Sat"]
+
+  # --- Jehanabad ---
+  - doctor_id: "DOC-017"
+    name: "Dr. Sarita Devi"
+    phc_id: "PHC-005"
+    specialization: "MBBS"
+    phone: "+91-9876543017"
+    available_days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+  - doctor_id: "DOC-018"
+    name: "Dr. Manish Kumar"
+    phc_id: "PHC-005"
+    specialization: "Obstetrics"
+    phone: "+91-9876543018"
+    available_days: ["Tue", "Thu", "Sat"]

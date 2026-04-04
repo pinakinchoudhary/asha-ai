@@ -1,0 +1,122 @@
+# Clinical danger signs from SUMAN / NHM / WHO guidelines
+# Used as rule-based FALLBACK when ML triage is unavailable
+# Each rule: keywords (English + transliterated Hindi), vital thresholds, severity, action
+
+maternal:
+  - name: severe_bleeding
+    keywords_en: ["heavy bleeding", "soaking pad", "hemorrhage", "blood clots", "vaginal bleeding"]
+    keywords_hi: ["bahut bleeding", "khoon bah raha", "bahut khoon", "pad bheeg raha"]
+    severity: critical
+    action: "Refer to FRU IMMEDIATELY. Do not delay. Arrange emergency transport."
+    urgency_hours: 0
+
+  - name: eclampsia_convulsions
+    keywords_en: ["convulsions", "seizure", "fits", "unconscious", "jerking"]
+    keywords_hi: ["jhatkay", "behosh", "mirgi", "daurey", "jhatke"]
+    severity: critical
+    action: "Refer to FRU IMMEDIATELY. Place patient on left side. Protect from injury."
+    urgency_hours: 0
+
+  - name: severe_headache_vision
+    keywords_en: ["severe headache", "blurred vision", "seeing spots", "headache with swelling"]
+    keywords_hi: ["tez sir dard", "dhundla dikhna", "aankhon mein chamak", "sir dard aur sujan"]
+    severity: critical
+    action: "Refer to PHC within 1 hour. Check BP immediately. Suspect pre-eclampsia."
+    urgency_hours: 1
+
+  - name: high_bp_preeclampsia
+    vital_condition:
+      bp_systolic_gte: 140
+      bp_diastolic_gte: 90
+    keywords_en: ["high blood pressure", "swollen face", "swollen hands", "pedal edema"]
+    keywords_hi: ["BP zyada", "chehra sooja", "haath sooje", "pair sujan"]
+    severity: high
+    action: "Refer to PHC within 4 hours. Monitor BP every 30 minutes."
+    urgency_hours: 4
+
+  - name: severe_anemia
+    vital_condition:
+      hemoglobin_lt: 7.0
+    keywords_en: ["very pale", "breathless at rest", "extreme weakness", "fainting"]
+    keywords_hi: ["bahut peela", "saans nahi aa rahi", "bahut kamzori", "behosh hona"]
+    severity: high
+    action: "Refer to PHC for blood transfusion evaluation. Ensure iron supplementation."
+    urgency_hours: 4
+
+  - name: foul_discharge
+    keywords_en: ["foul smelling discharge", "foul smelling lochia", "bad smell", "pus discharge"]
+    keywords_hi: ["badbu wala discharge", "ganda paani", "badbu aa rahi"]
+    severity: high
+    action: "Refer to PHC within 4 hours. Suspect puerperal sepsis."
+    urgency_hours: 4
+
+  - name: decreased_fetal_movement
+    keywords_en: ["baby not moving", "less movement", "no kicks", "decreased fetal movement"]
+    keywords_hi: ["bachcha hil nahi raha", "bachche ki movement kam", "laat nahi maar raha"]
+    severity: high
+    action: "Refer to PHC within 4 hours for fetal monitoring."
+    urgency_hours: 4
+
+  - name: high_fever
+    vital_condition:
+      temperature_gte: 38.5
+    keywords_en: ["high fever", "chills", "shivering", "rigors"]
+    keywords_hi: ["tez bukhar", "thandi lag rahi", "kaanp raha"]
+    severity: high
+    action: "Refer to PHC within 4 hours. Suspect infection."
+    urgency_hours: 4
+
+  - name: severe_abdominal_pain
+    keywords_en: ["severe abdominal pain", "sharp belly pain", "uterine tenderness"]
+    keywords_hi: ["pet mein bahut dard", "tez dard pet mein", "pet chhune mein dard"]
+    severity: high
+    action: "Refer to PHC. Suspect placental abruption or ectopic pregnancy."
+    urgency_hours: 2
+
+  - name: moderate_anemia
+    vital_condition:
+      hemoglobin_lt: 9.0
+      hemoglobin_gte: 7.0
+    keywords_en: ["pale", "tired", "weakness", "dizziness"]
+    keywords_hi: ["peela", "thakan", "kamzori", "chakkar"]
+    severity: moderate
+    action: "Counsel on iron-rich diet. Ensure IFA tablets. Follow up in 2 weeks."
+    urgency_hours: 48
+
+neonatal:
+  - name: unable_to_feed
+    keywords_en: ["not feeding", "refusing breast", "vomiting everything", "unable to suck"]
+    keywords_hi: ["doodh nahi pi raha", "muh nahi laga raha", "ulti kar raha"]
+    severity: critical
+    action: "Refer to facility IMMEDIATELY."
+    urgency_hours: 0
+
+  - name: chest_indrawing
+    keywords_en: ["chest indrawing", "difficulty breathing", "fast breathing", "grunting"]
+    keywords_hi: ["chhati dhans rahi", "saans lene mein taklif", "tez saans"]
+    severity: critical
+    action: "Refer to facility IMMEDIATELY. Suspect pneumonia."
+    urgency_hours: 0
+
+  - name: yellow_palms_soles
+    keywords_en: ["yellow palms", "yellow soles", "jaundice", "yellow eyes", "yellow skin"]
+    keywords_hi: ["peeli hatheli", "peele talve", "peeli aankh", "piliya"]
+    severity: critical
+    action: "Refer to facility IMMEDIATELY. Severe neonatal jaundice."
+    urgency_hours: 0
+
+  - name: neonatal_hypothermia
+    vital_condition:
+      temperature_lt: 35.5
+    keywords_en: ["cold to touch", "not warming up", "lethargic", "hypothermia"]
+    keywords_hi: ["thanda pad raha", "garam nahi ho raha", "sust"]
+    severity: high
+    action: "Initiate Kangaroo Mother Care. If no improvement in 1 hour, refer."
+    urgency_hours: 1
+
+  - name: neonatal_sepsis
+    keywords_en: ["lethargic", "not moving", "bulging fontanelle", "umbilical redness", "pus"]
+    keywords_hi: ["sust", "hil nahi raha", "naabhi laal", "naabhi se paani"]
+    severity: critical
+    action: "Refer to facility IMMEDIATELY."
+    urgency_hours: 0

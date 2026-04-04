@@ -1,0 +1,29 @@
+# Core ML / Vector Search
+faiss-cpu==1.7.4
+sentence-transformers==2.2.2
+
+# LLM inference on CPU
+llama-cpp-python==0.2.56
+ctransformers==0.2.27
+onnxruntime==1.17.0
+
+# RAG pipeline
+langchain==0.1.20
+langchain-community==0.0.38
+PyPDF2==3.0.1
+
+# Translation / Voice
+gtts==2.5.1
+requests==2.31.0
+
+# Data generation
+faker==24.0.0
+
+# Config
+pyyaml==6.0.1
+
+# UI
+gradio==4.19.2
+plotly==5.18.0
+
+# Note: pyspark, mlflow, databricks-sdk are pre-installed on Databricks runtime
