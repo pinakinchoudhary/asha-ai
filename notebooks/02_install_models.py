@@ -6,7 +6,7 @@
 # MAGIC
 # MAGIC | Component | How | Size |
 # MAGIC |-----------|-----|------|
-# MAGIC | LLM (sarvam-2.0-flash) | Sarvam AI API | 0 GB local |
+# MAGIC | LLM (sarvam-30b) | Sarvam AI API | 0 GB local |
 # MAGIC | Translation (Mayura) | Sarvam AI API | 0 GB local |
 # MAGIC | TTS (Bulbul v2) | Sarvam AI API | 0 GB local |
 # MAGIC | ASR (Saarika) | Sarvam AI API | 0 GB local |
@@ -40,21 +40,21 @@ import os
 
 # Load secrets from Databricks secret scope (preferred) or cluster env vars
 try:
-    _key = dbutils.secrets.get(scope="asha-copilot", key="sarvam-api-key")
+    _key = dbutils.secrets.get(scope="asha-ai", key="sarvam-api-key")
     os.environ["SARVAM_API_KEY"] = _key
-    print("SARVAM_API_KEY: loaded from Databricks secrets scope 'asha-copilot'")
+    print("SARVAM_API_KEY: loaded from Databricks secrets scope 'asha-ai'")
 except Exception:
     if os.environ.get("SARVAM_API_KEY"):
         print("SARVAM_API_KEY: loaded from cluster environment variable")
     else:
         print("WARNING: SARVAM_API_KEY not set. "
-              "Add it via: Databricks secrets (scope=asha-copilot, key=sarvam-api-key) "
+              "Add it via: Databricks secrets (scope=asha-ai, key=sarvam-api-key) "
               "or cluster Environment Variables.")
 
 try:
-    _tok = dbutils.secrets.get(scope="asha-copilot", key="hf-token")
+    _tok = dbutils.secrets.get(scope="asha-ai", key="hf-token")
     os.environ["HF_TOKEN"] = _tok
-    print("HF_TOKEN:        loaded from Databricks secrets scope 'asha-copilot'")
+    print("HF_TOKEN:        loaded from Databricks secrets scope 'asha-ai'")
 except Exception:
     if os.environ.get("HF_TOKEN"):
         print("HF_TOKEN:        loaded from cluster environment variable")
@@ -154,7 +154,7 @@ print(f"Test vector (first 5): {test_embedding[0][:5].tolist()}")
 print("=" * 60)
 print("SETUP SUMMARY")
 print("=" * 60)
-print(f"  Sarvam AI API (sarvam-2.0-flash):{'✓ Connected' if llm.is_loaded else '✗ No API key'}")
+print(f"  Sarvam AI API (sarvam-30b):{'✓ Connected' if llm.is_loaded else '✗ No API key'}")
 print(f"  Sarvam Translation (Mayura):     {'✓ Connected' if translator.is_loaded else '✗ No API key'}")
 print(f"  Sentence Embeddings (MiniLM):    ✓ Loaded ({test_embedding.shape[1]}-dim)")
 print()

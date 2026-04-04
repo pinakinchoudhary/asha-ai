@@ -12,7 +12,7 @@ import os
 logger = logging.getLogger(__name__)
 
 SARVAM_API_BASE = "https://api.sarvam.ai"
-SARVAM_LLM_MODEL = "sarvam-2.0-flash"
+SARVAM_LLM_MODEL = "sarvam-30b"
 _SECRETS_SCOPE = "asha-copilot"
 
 
@@ -102,24 +102,23 @@ class IndicLLM:
             return ""
         try:
             import requests
+            # HF Router uses OpenAI-compatible /v1/chat/completions endpoint
             resp = requests.post(
-                "https://router.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3",
-                headers={"Authorization": f"Bearer {self._hf_key}"},
+                "https://router.huggingface.co/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._hf_key}",
+                    "Content-Type": "application/json",
+                },
                 json={
-                    "inputs": prompt,
-                    "parameters": {
-                        "max_new_tokens": max_tokens,
-                        "temperature": temperature,
-                        "return_full_text": False,
-                    },
+                    "model": "mistralai/Mistral-7B-Instruct-v0.3",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
                 },
                 timeout=30,
             )
             if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and data:
-                    return data[0].get("generated_text", "").strip()
-                return data.get("generated_text", "").strip()
+                return resp.json()["choices"][0]["message"]["content"].strip()
             logger.warning(f"HF Router returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             logger.warning(f"HF Router fallback failed: {e}")
