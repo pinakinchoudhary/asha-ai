@@ -313,7 +313,7 @@ class TriageEngine:
             if triage_result.risk_level == "RED":
                 # Need FRU with surgery + blood bank
                 facilities = spark.sql(f"""
-                    SELECT * FROM hive_metastore.asha_copilot.phc_facilities
+                    SELECT * FROM workspace.asha_copilot.phc_facilities
                     WHERE type = 'FRU' AND has_surgery = true AND has_blood_bank = true
                     ORDER BY phc_id
                     LIMIT 1
@@ -322,21 +322,21 @@ class TriageEngine:
                 if not facilities:
                     # Fall back to any CHC
                     facilities = spark.sql("""
-                        SELECT * FROM hive_metastore.asha_copilot.phc_facilities
+                        SELECT * FROM workspace.asha_copilot.phc_facilities
                         WHERE type IN ('CHC', 'FRU')
                         ORDER BY phc_id LIMIT 1
                     """).collect()
             else:
                 # YELLOW — nearest PHC or CHC
                 facilities = spark.sql(f"""
-                    SELECT * FROM hive_metastore.asha_copilot.phc_facilities
+                    SELECT * FROM workspace.asha_copilot.phc_facilities
                     WHERE phc_id = '{patient_phc}'
                     LIMIT 1
                 """).collect()
 
                 if not facilities:
                     facilities = spark.sql("""
-                        SELECT * FROM hive_metastore.asha_copilot.phc_facilities
+                        SELECT * FROM workspace.asha_copilot.phc_facilities
                         WHERE type IN ('PHC', 'CHC')
                         ORDER BY phc_id LIMIT 1
                     """).collect()
@@ -350,7 +350,7 @@ class TriageEngine:
             today_day = date.today().strftime("%a")
             preferred_spec = "'Obstetrics & Gynecology', 'Obstetrics'" if triage_result.risk_level == "RED" else "'MBBS', 'Obstetrics'"
             doctors = spark.sql(f"""
-                SELECT * FROM hive_metastore.asha_copilot.doctors
+                SELECT * FROM workspace.asha_copilot.doctors
                 WHERE phc_id = '{fac['phc_id']}'
                 AND array_contains(available_days, '{today_day}')
                 ORDER BY
@@ -362,7 +362,7 @@ class TriageEngine:
             # If no doctor available today, get any doctor at facility
             if not doctors:
                 doctors = spark.sql(f"""
-                    SELECT * FROM hive_metastore.asha_copilot.doctors
+                    SELECT * FROM workspace.asha_copilot.doctors
                     WHERE phc_id = '{fac['phc_id']}'
                     LIMIT 1
                 """).collect()

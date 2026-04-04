@@ -3,10 +3,12 @@ Central configuration for ASHA Copilot.
 All configurable values in one place — no hardcoded strings in notebooks or src modules.
 """
 
+import os
+
 # ---------------------------------------------------------------------------
-# Database (hive_metastore — Free Edition default catalog)
+# Database (Unity Catalog — workspace catalog on Databricks)
 # ---------------------------------------------------------------------------
-CATALOG = "hive_metastore"
+CATALOG = "workspace"
 DATABASE = "asha_copilot"
 FULL_DB = f"{CATALOG}.{DATABASE}"
 
@@ -20,25 +22,33 @@ TABLE_DOCTORS = f"{FULL_DB}.doctors"
 TABLE_PHC_FACILITIES = f"{FULL_DB}.phc_facilities"
 
 # ---------------------------------------------------------------------------
-# Model paths on DBFS (downloaded by notebook 02_install_models)
+# File paths — derived relative to repo root (works on Databricks Workspace)
 # ---------------------------------------------------------------------------
-MODELS_DIR = "/dbfs/FileStore/asha_copilot/models"
-FAISS_INDEX_PATH = "/dbfs/FileStore/asha_copilot/faiss_index"
-PROTOCOLS_DIR = "/dbfs/FileStore/asha_copilot/protocols"
+_SETTINGS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_SETTINGS_DIR)
 
-# Primary LLM — Airavata 7B GGUF Q4_K_M (Hindi instruction-tuned)
-LLM_PRIMARY_MODEL = "Airavata-7B-Q4_K_M.gguf"
-LLM_PRIMARY_PATH = f"{MODELS_DIR}/{LLM_PRIMARY_MODEL}"
-LLM_PRIMARY_CTX = 2048  # context window tokens
-LLM_PRIMARY_THREADS = 4  # CPU threads for llama.cpp
+# Where sentence-transformers cache is stored (auto-managed by HuggingFace)
+MODELS_DIR = os.path.join(_REPO_ROOT, "models")
 
-# Lightweight LLM — Param-1 2.9B Q4 (intent classification, entity extraction)
-LLM_LIGHT_MODEL = "Param-1-2.9B-Q4.gguf"
-LLM_LIGHT_PATH = f"{MODELS_DIR}/{LLM_LIGHT_MODEL}"
-LLM_LIGHT_CTX = 1024
+# FAISS index persisted here after notebook 03
+FAISS_INDEX_PATH = os.path.join(_REPO_ROOT, "data", "faiss_index")
 
-# Translation — IndicTrans2 ONNX 200M
-TRANSLATE_MODEL_DIR = f"{MODELS_DIR}/indictrans2"
+# NHM protocol PDFs — upload here manually or via dbutils.fs.cp
+PROTOCOLS_DIR = os.path.join(_REPO_ROOT, "data", "nhm_protocols")
+
+# Legacy GGUF paths (kept for reference; not used — Sarvam API is primary)
+LLM_PRIMARY_PATH = None
+TRANSLATE_MODEL_DIR = None
+
+# ---------------------------------------------------------------------------
+# Sarvam AI API (primary LLM, translation, TTS)
+# Set SARVAM_API_KEY in environment or Databricks cluster config
+# ---------------------------------------------------------------------------
+SARVAM_API_BASE = "https://api.sarvam.ai"
+SARVAM_LLM_MODEL = "sarvam-m"
+
+# HuggingFace Inference API (fallback for ASR + LLM if Sarvam unavailable)
+HF_INFERENCE_API = "https://api-inference.huggingface.co/models"
 
 # Embeddings — sentence-transformers (auto-downloaded by HuggingFace)
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -61,13 +71,6 @@ TEMP_HIGH_FEVER = 38.5  # Celsius
 # ---------------------------------------------------------------------------
 SUPPORTED_LANGUAGES = {"hi": "Hindi", "en": "English"}
 DEFAULT_LANGUAGE = "hi"
-
-# ---------------------------------------------------------------------------
-# API fallback endpoints (used if local GGUF models fail to load)
-# ---------------------------------------------------------------------------
-SARVAM_API_URL = "https://api.sarvam.ai"
-AI4BHARAT_API_URL = "https://api.ai4bharat.org"
-HF_INFERENCE_API = "https://api-inference.huggingface.co/models"
 
 # ---------------------------------------------------------------------------
 # Synthetic data generation

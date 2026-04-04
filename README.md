@@ -60,38 +60,35 @@ ASHA Copilot is a voice-first, multilingual field assistant built on the Databri
 
 | Feature | Description | ML Model |
 |---------|-------------|----------|
-| **Voice-Driven CRUD** | ASHA speaks in Hindi to add patients, log visits, update records | Airavata 7B (entity extraction) |
-| **Clinical Triage** | ML-primary risk classification (RED/YELLOW/GREEN) with doctor & PHC auto-assignment | Airavata 7B + rule-based fallback |
-| **Protocol RAG** | Q&A grounded in NHM/SUMAN clinical guidelines | FAISS + MiniLM-L6-v2 + Airavata |
+| **Voice-Driven CRUD** | ASHA speaks in Hindi to add patients, log visits, update records | Sarvam-m (entity extraction) |
+| **Clinical Triage** | ML-primary risk classification (RED/YELLOW/GREEN) with doctor & PHC auto-assignment | Sarvam-m + rule-based fallback |
+| **Protocol RAG** | Q&A grounded in NHM/SUMAN clinical guidelines | FAISS + MiniLM-L6-v2 + Sarvam-m |
 | **Scheme Eligibility** | PMMVY, JSY, JSSK evaluation with missing document tracking | ML-assisted + rule fallback |
 | **Immunization Tracker** | UIP schedule monitoring, overdue flagging, dropout analysis | Rule-based with Delta queries |
 | **Supervisor Dashboard** | Real-time risk heatmaps, coverage charts, ASHA activity metrics | Plotly + Gradio |
 
 ## Tech Stack
 
-| Component | Technology | Constraint |
-|-----------|-----------|------------|
-| **Platform** | Databricks Free Edition | CPU-only, ~15 GB RAM |
-| **Storage** | Delta Lake (hive_metastore) | Medallion Architecture |
-| **Primary LLM** | Airavata 7B GGUF Q4_K_M | ~4 GB, CPU inference |
-| **Lightweight LLM** | Param-1 2.9B GGUF Q4 | ~1.5 GB, fast intent/NER |
-| **Translation** | IndicTrans2 ONNX 200M | Hindi ↔ English |
-| **ASR** | IndicWhisper (API) | Hindi speech-to-text |
-| **Embeddings** | all-MiniLM-L6-v2 | 384-dim, 80 MB |
-| **Vector Search** | FAISS (CPU) | In-memory, persisted to DBFS |
-| **TTS** | gTTS / Sarvam TTS API | Hindi text-to-speech |
+| Component | Technology | Notes |
+|-----------|-----------|-------|
+| **Platform** | Databricks (workspace catalog) | Serverless-compatible |
+| **Storage** | Delta Lake (workspace.asha_copilot) | Unity Catalog |
+| **Primary LLM** | Sarvam-m via Sarvam AI API | Strong Hindi, no local GPU needed |
+| **Translation** | Sarvam Mayura API | Hindi ↔ English |
+| **ASR** | Sarvam Saarika API | Hindi speech-to-text |
+| **TTS** | Sarvam Bulbul v2 API | Natural Hindi voice |
+| **Embeddings** | all-MiniLM-L6-v2 (auto-download ~80 MB) | 384-dim, CPU-friendly |
+| **Vector Search** | FAISS (CPU) | In-memory, persisted to Workspace |
 | **UI** | Gradio | In-notebook, no separate server |
 
-### Resource Budget (fits in Databricks Free Edition)
+### Resource Budget
 
-| Model | Disk | RAM at Inference | Purpose |
-|-------|------|-----------------|---------|
-| Airavata 7B Q4_K_M | ~4 GB | ~6 GB | Clinical reasoning, triage, RAG |
-| Param-1 2.9B Q4 | ~1.5 GB | ~3 GB | Intent classification, NER |
-| IndicTrans2 ONNX | ~400 MB | ~1 GB | Translation |
-| all-MiniLM-L6-v2 | ~80 MB | ~200 MB | RAG embeddings |
-| FAISS index | ~5 MB | ~50 MB | Vector search |
-| **Total** | **~6 GB** | **~10 GB** | Fits in 15 GB with headroom |
+| Component | Local Disk | RAM | Purpose |
+|-----------|-----------|-----|---------|
+| Sarvam AI API (LLM + Translation + TTS + ASR) | 0 GB | 0 GB | All AI inference via API |
+| all-MiniLM-L6-v2 | ~80 MB | ~200 MB | RAG embeddings only |
+| FAISS index | ~5 MB | ~50 MB | Vector search over NHM protocols |
+| **Total** | **~85 MB** | **~250 MB** | Minimal local footprint |
 
 ---
 
@@ -101,7 +98,8 @@ ASHA Copilot is a voice-first, multilingual field assistant built on the Databri
 
 - A Databricks account (Free Edition works)
 - A GitHub account (to clone this repo)
-- Optional: Hugging Face token (for API fallback models)
+- **Sarvam AI API key** — get one at [sarvam.ai](https://www.sarvam.ai) (free tier available)
+- Optional: Hugging Face token (for ASR + LLM fallback)
 
 ### Step 1: Create Databricks Workspace
 
@@ -145,12 +143,14 @@ for fname, url in urls.items():
 
 ### Step 4: Set Environment Variables (Optional)
 
-For API-based model fallbacks, set these in your notebook or cluster config:
-```python
-import os
-os.environ["HF_TOKEN"] = "hf_your_token_here"        # Hugging Face Inference API
-os.environ["SARVAM_API_KEY"] = "your_key_here"         # Sarvam AI TTS
+Set these in your Databricks cluster **Environment Variables** (Compute → Edit → Advanced → Environment variables) for persistence across restarts:
+
 ```
+SARVAM_API_KEY=your_sarvam_key_here    # Required — get at sarvam.ai
+HF_TOKEN=hf_your_token_here            # Optional — HF API fallback for ASR
+```
+
+Or set them at the top of notebook `02_install_models` for a single session.
 
 ### Step 5: Run Notebooks in Order
 
@@ -158,9 +158,9 @@ Navigate to the `notebooks/` folder in your cloned repo and run each notebook se
 
 | # | Notebook | What it does | Time |
 |---|----------|-------------|------|
-| 00 | `00_setup_database` | Creates database + 7 Delta tables | ~30s |
+| 00 | `00_setup_database` | Creates `workspace.asha_copilot` schema + 7 Delta tables | ~30s |
 | 01 | `01_generate_synthetic_data` | Generates 500 patients, visits, immunizations, doctors, PHCs | ~2 min |
-| 02 | `02_install_models` | Downloads GGUF models to DBFS (~6 GB) | ~10-15 min (first run) |
+| 02 | `02_install_models` | Installs deps, tests Sarvam API connectivity, loads embedder | ~1 min |
 | 03 | `03_build_rag_index` | Ingests PDFs, builds FAISS vector index | ~2 min |
 | 04 | `04_clinical_triage_demo` | Runs ML triage on visits, assigns doctors | ~5 min |
 | 05 | `05_voice_crud_demo` | Demos voice-driven patient add/update | ~2 min |

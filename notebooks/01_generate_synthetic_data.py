@@ -52,7 +52,7 @@ for fac in phc_config["phc_facilities"]:
         villages_served=fac["villages_served"],
     ))
 phc_df = spark.createDataFrame(phc_rows)
-phc_df.write.format("delta").mode("overwrite").saveAsTable("hive_metastore.asha_copilot.phc_facilities")
+phc_df.write.format("delta").mode("overwrite").saveAsTable("workspace.asha_copilot.phc_facilities")
 print(f"PHC Facilities: {phc_df.count()} rows written")
 display(phc_df)
 
@@ -70,7 +70,7 @@ for doc in phc_config["doctors"]:
         available_days=doc["available_days"],
     ))
 doc_df = spark.createDataFrame(doc_rows)
-doc_df.write.format("delta").mode("overwrite").saveAsTable("hive_metastore.asha_copilot.doctors")
+doc_df.write.format("delta").mode("overwrite").saveAsTable("workspace.asha_copilot.doctors")
 print(f"Doctors: {doc_df.count()} rows written")
 display(doc_df)
 
@@ -84,7 +84,7 @@ display(doc_df)
 from src.synthetic_data import generate_patients, generate_visits, generate_immunizations, generate_scheme_applications
 
 patients_df = generate_patients(spark, n=500)
-patients_df.write.format("delta").mode("overwrite").saveAsTable("hive_metastore.asha_copilot.patients")
+patients_df.write.format("delta").mode("overwrite").saveAsTable("workspace.asha_copilot.patients")
 print(f"Patients: {patients_df.count()} rows written")
 display(patients_df.limit(10))
 
@@ -96,7 +96,7 @@ display(patients_df.limit(10))
 # COMMAND ----------
 
 visits_df = generate_visits(spark, patients_df)
-visits_df.write.format("delta").mode("overwrite").saveAsTable("hive_metastore.asha_copilot.visits")
+visits_df.write.format("delta").mode("overwrite").saveAsTable("workspace.asha_copilot.visits")
 print(f"Visits: {visits_df.count()} rows written")
 
 # Show danger sign distribution
@@ -112,7 +112,7 @@ display(visits_df.filter("referral_flag = true").limit(10))
 
 imm_df = generate_immunizations(spark, patients_df)
 if imm_df:
-    imm_df.write.format("delta").mode("overwrite").saveAsTable("hive_metastore.asha_copilot.immunizations")
+    imm_df.write.format("delta").mode("overwrite").saveAsTable("workspace.asha_copilot.immunizations")
     print(f"Immunizations: {imm_df.count()} rows written")
     print(f"Overdue vaccines: {imm_df.filter('missed_flag = true').count()}")
     display(imm_df.filter("missed_flag = true").limit(10))
@@ -127,7 +127,7 @@ else:
 # COMMAND ----------
 
 scheme_df = generate_scheme_applications(spark, patients_df)
-scheme_df.write.format("delta").mode("overwrite").saveAsTable("hive_metastore.asha_copilot.scheme_applications")
+scheme_df.write.format("delta").mode("overwrite").saveAsTable("workspace.asha_copilot.scheme_applications")
 print(f"Scheme Applications: {scheme_df.count()} rows written")
 display(
     scheme_df.groupBy("scheme_id", "eligibility_status").count().orderBy("scheme_id")
@@ -144,5 +144,5 @@ print("=" * 60)
 print("SYNTHETIC DATA GENERATION COMPLETE")
 print("=" * 60)
 for table in ["phc_facilities", "doctors", "patients", "visits", "immunizations", "scheme_applications"]:
-    count = spark.table(f"hive_metastore.asha_copilot.{table}").count()
+    count = spark.table(f"workspace.asha_copilot.{table}").count()
     print(f"  {table:30s} → {count:,} rows")

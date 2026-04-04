@@ -1,8 +1,7 @@
 """
 Unified Indic LLM interface.
 
-Primary: Airavata 7B GGUF (Hindi instruction-tuned) via llama-cpp-python
-Lightweight: Param-1 2.9B GGUF for intent classification / entity extraction
+Primary: Sarvam AI API (sarvam-m — multilingual, strong Hindi support)
 Fallback: Hugging Face Inference API
 """
 
@@ -12,65 +11,72 @@ import os
 
 logger = logging.getLogger(__name__)
 
+SARVAM_API_BASE = "https://api.sarvam.ai"
+SARVAM_LLM_MODEL = "sarvam-m"
+
 
 class IndicLLM:
-    """Wrapper around quantized Indic LLMs with graceful degradation."""
+    """Wrapper around Sarvam AI API with graceful degradation to HuggingFace."""
 
     def __init__(self, model_path: str = None, n_ctx: int = 2048, n_threads: int = 4):
-        self._model = None
-        self._model_path = model_path
-        self._n_ctx = n_ctx
-        self._n_threads = n_threads
-        self._load_model()
-
-    def _load_model(self):
-        """Try loading GGUF model via llama-cpp-python. Fail gracefully."""
-        if not self._model_path or not os.path.exists(self._model_path):
-            logger.warning(f"Model not found at {self._model_path}. Using API fallback.")
-            return
-        try:
-            from llama_cpp import Llama
-            self._model = Llama(
-                model_path=self._model_path,
-                n_ctx=self._n_ctx,
-                n_threads=self._n_threads,
-                verbose=False,
+        # model_path is ignored — Sarvam API is used instead of local GGUF
+        self._sarvam_key = os.environ.get("SARVAM_API_KEY", "")
+        self._hf_key = os.environ.get("HF_TOKEN", "")
+        if not self._sarvam_key:
+            logger.warning(
+                "SARVAM_API_KEY not set. Set it via os.environ or Databricks cluster config. "
+                "Falling back to HuggingFace Inference API."
             )
-            logger.info(f"Loaded GGUF model from {self._model_path}")
-        except Exception as e:
-            logger.warning(f"Failed to load GGUF model: {e}. Using API fallback.")
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None
+        """True if any API key is available."""
+        return bool(self._sarvam_key or self._hf_key)
 
     def generate(self, prompt: str, max_tokens: int = 512, temperature: float = 0.3,
                  stop: list = None) -> str:
-        """Generate text from prompt. Falls back to API if local model unavailable."""
-        if self._model:
-            return self._generate_local(prompt, max_tokens, temperature, stop)
-        return self._generate_api_fallback(prompt, max_tokens, temperature)
+        """Generate text from prompt using Sarvam API (falls back to HF API)."""
+        if self._sarvam_key:
+            result = self._generate_sarvam(prompt, max_tokens, temperature)
+            if result:
+                return result
+        return self._generate_hf_fallback(prompt, max_tokens, temperature)
 
-    def _generate_local(self, prompt: str, max_tokens: int, temperature: float,
-                        stop: list = None) -> str:
-        output = self._model(
-            prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stop=stop or ["</s>", "\n\n\n"],
-        )
-        return output["choices"][0]["text"].strip()
-
-    def _generate_api_fallback(self, prompt: str, max_tokens: int,
-                               temperature: float) -> str:
-        """Call Hugging Face Inference API as fallback."""
+    def _generate_sarvam(self, prompt: str, max_tokens: int, temperature: float) -> str:
+        """Call Sarvam AI chat completions endpoint (OpenAI-compatible)."""
         try:
             import requests
-            api_key = os.environ.get("HF_TOKEN", "")
-            model_id = "ai4bharat/Airavata"
             resp = requests.post(
-                f"https://api-inference.huggingface.co/models/{model_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
+                f"{SARVAM_API_BASE}/v1/chat/completions",
+                headers={
+                    "api-subscription-key": self._sarvam_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": SARVAM_LLM_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+                timeout=45,
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+            logger.warning(f"Sarvam API returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"Sarvam API call failed: {e}")
+        return ""
+
+    def _generate_hf_fallback(self, prompt: str, max_tokens: int, temperature: float) -> str:
+        """Call HuggingFace Inference API as fallback."""
+        if not self._hf_key:
+            logger.warning("No HF_TOKEN set. Cannot use HF fallback.")
+            return ""
+        try:
+            import requests
+            resp = requests.post(
+                f"https://api-inference.huggingface.co/models/ai4bharat/Airavata",
+                headers={"Authorization": f"Bearer {self._hf_key}"},
                 json={
                     "inputs": prompt,
                     "parameters": {
@@ -82,9 +88,9 @@ class IndicLLM:
             )
             if resp.status_code == 200:
                 return resp.json()[0]["generated_text"].replace(prompt, "").strip()
-            logger.warning(f"API fallback returned {resp.status_code}: {resp.text}")
+            logger.warning(f"HF API returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
-            logger.warning(f"API fallback failed: {e}")
+            logger.warning(f"HF API fallback failed: {e}")
         return ""
 
     def classify_intent(self, text: str) -> str:
@@ -100,10 +106,10 @@ class IndicLLM:
             "- immunization_check: Asking about vaccination schedule or status\n"
             "- protocol_question: Asking about clinical protocols or guidelines\n\n"
             f"Input: {text}\n\n"
-            "Intent:"
+            "Respond with ONLY the intent name (one word):\nIntent:"
         )
         result = self.generate(prompt, max_tokens=20, temperature=0.1)
-        result = result.strip().lower().replace('"', '').replace("'", "")
+        result = result.strip().lower().replace('"', '').replace("'", "").split()[0] if result.strip() else ""
         valid_intents = [
             "symptom_report", "add_patient", "update_record", "log_visit",
             "scheme_query", "immunization_check", "protocol_question",
@@ -117,57 +123,59 @@ class IndicLLM:
         """Extract structured entities from ASHA's speech based on intent."""
         if intent in ("add_patient", "log_visit", "update_record"):
             prompt = (
-                "Extract patient information from the following text. Return ONLY valid JSON.\n\n"
+                "Extract patient information from the following text. Return ONLY valid JSON with no extra text.\n\n"
                 f"Text: {text}\n\n"
                 "Extract these fields (use null if not mentioned):\n"
-                '{"name": str, "age": int, "village": str, "husband_name": str, '
-                '"bp_systolic": int, "bp_diastolic": int, "weight_kg": float, '
-                '"hemoglobin": float, "temperature": float, "symptoms": [str], '
-                '"gravida": int, "para": int, "lmp_date": str, '
-                '"bpl_status": bool, "caste_category": str, '
-                '"aadhaar": bool, "bank_account": bool}\n\n'
+                '{"name": "string or null", "age": number_or_null, "village": "string or null", '
+                '"husband_name": "string or null", '
+                '"bp_systolic": number_or_null, "bp_diastolic": number_or_null, "weight_kg": number_or_null, '
+                '"hemoglobin": number_or_null, "temperature": number_or_null, "symptoms": ["list"],  '
+                '"gravida": number_or_null, "para": number_or_null, '
+                '"bpl_status": true/false/null, "caste_category": "string or null", '
+                '"aadhaar": true/false/null, "bank_account": true/false/null}\n\n'
                 "JSON:"
             )
         elif intent == "scheme_query":
             prompt = (
                 "Extract patient details for scheme eligibility from this text. "
-                "Return ONLY valid JSON.\n\n"
+                "Return ONLY valid JSON with no extra text.\n\n"
                 f"Text: {text}\n\n"
-                '{"name": str, "age": int, "parity": int, "bpl_status": bool, '
-                '"caste_category": str, "state": str, "institutional_delivery": bool}\n\n'
+                '{"name": "string or null", "age": number_or_null, "parity": number_or_null, '
+                '"bpl_status": true/false/null, '
+                '"caste_category": "string or null", "state": "string or null", '
+                '"institutional_delivery": true/false/null}\n\n'
                 "JSON:"
             )
         else:
             prompt = (
-                "Extract the key question or topic from this text. Return ONLY valid JSON.\n\n"
+                "Extract the key question or topic from this text. Return ONLY valid JSON with no extra text.\n\n"
                 f"Text: {text}\n\n"
-                '{"query": str, "patient_name": str, "child_name": str}\n\n'
+                '{"query": "string", "patient_name": "string or null", "child_name": "string or null"}\n\n'
                 "JSON:"
             )
 
         result = self.generate(prompt, max_tokens=300, temperature=0.1)
         try:
-            # Find JSON in the response
             start = result.find("{")
             end = result.rfind("}") + 1
             if start >= 0 and end > start:
                 return json.loads(result[start:end])
         except (json.JSONDecodeError, ValueError):
-            logger.warning(f"Failed to parse entities from LLM output: {result}")
+            logger.warning(f"Failed to parse entities from LLM output: {result[:200]}")
         return {}
 
-    def generate_clinical_assessment(self, visit_data: dict) -> str:
+    def generate_clinical_assessment(self, visit_data: dict) -> dict:
         """Generate clinical assessment from visit vitals and symptoms."""
         prompt = (
             "You are a clinical triage assistant for Indian rural healthcare.\n"
             "Assess the following patient visit and classify risk.\n\n"
             f"Patient vitals and notes:\n{json.dumps(visit_data, indent=2)}\n\n"
-            "Respond ONLY with valid JSON:\n"
-            '{"risk_level": "GREEN|YELLOW|RED", '
+            "Respond ONLY with valid JSON and nothing else:\n"
+            '{"risk_level": "GREEN or YELLOW or RED", '
             '"danger_signs": ["list of detected signs"], '
             '"recommended_action": "specific action", '
-            '"urgency_hours": int, '
-            '"confidence": float between 0 and 1}\n\n'
+            '"urgency_hours": number, '
+            '"confidence": number_between_0_and_1}\n\n'
             "Assessment JSON:"
         )
         result = self.generate(prompt, max_tokens=300, temperature=0.2)
@@ -177,5 +185,5 @@ class IndicLLM:
             if start >= 0 and end > start:
                 return json.loads(result[start:end])
         except (json.JSONDecodeError, ValueError):
-            logger.warning(f"Failed to parse clinical assessment: {result}")
+            logger.warning(f"Failed to parse clinical assessment: {result[:200]}")
         return None

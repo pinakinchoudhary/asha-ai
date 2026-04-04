@@ -1,5 +1,4 @@
 # Databricks notebook source
-
 # MAGIC %md
 # MAGIC # 08 — ASHA Copilot App
 # MAGIC Full interactive Gradio application — the main demo notebook.
@@ -13,7 +12,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install llama-cpp-python faiss-cpu sentence-transformers PyPDF2 gradio gtts pyyaml
+# MAGIC %pip install faiss-cpu sentence-transformers PyPDF2 gradio gtts pyyaml requests
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -40,16 +39,14 @@ from src.scheme_eligibility import SchemeEngine
 from src.rag_pipeline import RAGPipeline
 from src.voice_db_agent import VoiceDBAgent
 from src.voice_pipeline import VoicePipeline
-from config.settings import (
-    LLM_PRIMARY_PATH, TRANSLATE_MODEL_DIR, FAISS_INDEX_PATH,
-)
+from config.settings import FAISS_INDEX_PATH
 
 # Load models
-print("Loading LLM...")
-llm = IndicLLM(model_path=LLM_PRIMARY_PATH, n_ctx=2048, n_threads=4)
-print(f"  LLM loaded: {llm.is_loaded}")
+print("Initializing LLM (Sarvam API)...")
+llm = IndicLLM()
+print(f"  LLM API available: {llm.is_loaded}")
 
-translator = IndicTranslator(model_dir=TRANSLATE_MODEL_DIR)
+translator = IndicTranslator()
 asr = IndicASR()
 tts = IndicTTS()
 
@@ -65,7 +62,11 @@ scheme_engine = SchemeEngine(llm=llm)
 
 print("Loading RAG pipeline...")
 rag = RAGPipeline(llm=llm)
-rag.load_index(FAISS_INDEX_PATH)
+if os.path.exists(FAISS_INDEX_PATH):
+    rag.load_index(FAISS_INDEX_PATH)
+    print(f"  FAISS index loaded from {FAISS_INDEX_PATH}")
+else:
+    print("  No FAISS index found — RAG will use LLM knowledge only")
 
 print("Loading voice DB agent...")
 voice_db = VoiceDBAgent(llm=llm, translator=translator, asr=asr, spark=spark)
@@ -137,7 +138,7 @@ def add_patient_voice(command, language):
 def get_recent_patients():
     rows = spark.sql("""
         SELECT name, age, village, bpl_status, registered_date
-        FROM hive_metastore.asha_copilot.patients
+        FROM workspace.asha_copilot.patients
         ORDER BY registered_date DESC LIMIT 10
     """).toPandas()
     return rows
@@ -180,7 +181,7 @@ def check_schemes(name):
     if not name:
         return "Please enter a patient name."
     patients = spark.sql(f"""
-        SELECT * FROM hive_metastore.asha_copilot.patients
+        SELECT * FROM workspace.asha_copilot.patients
         WHERE lower(name) LIKE '%{name.lower().split()[0]}%'
         LIMIT 1
     """).collect()
@@ -235,7 +236,7 @@ with gr.Blocks(
         lang_select = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
         chatbot = gr.Chatbot(height=400)
         msg_input = gr.Textbox(
-            placeholder="Type or paste ASHA's voice input here... (e.g., 'Patient ko tez bukhar hai aur saans lene mein taklif hai')",
+            placeholder="Type or paste ASHA's voice input here...",
             label="ASHA Input"
         )
         msg_input.submit(copilot_chat, [msg_input, lang_select, chatbot], [chatbot, msg_input])

@@ -1,23 +1,29 @@
 """
 Indic Automatic Speech Recognition (ASR).
 
-Primary: AI4Bharat IndicWhisper via Hugging Face Inference API
-Fallback: Accept text input directly (for demo without mic)
+Primary: Sarvam AI Saarika ASR API
+Fallback: HuggingFace IndicWhisper API, then text passthrough for demo
 """
 
-import base64
 import logging
 import os
 
 logger = logging.getLogger(__name__)
 
+SARVAM_API_BASE = "https://api.sarvam.ai"
+
+_SARVAM_LANG = {
+    "hi": "hi-IN",
+    "en": "en-IN",
+}
+
 
 class IndicASR:
-    """Speech-to-text for Hindi and English using IndicWhisper."""
+    """Speech-to-text for Hindi and English."""
 
     def __init__(self):
-        self._api_key = os.environ.get("HF_TOKEN", "")
-        self._model_id = "ai4bharat/indicwhisper-hindi"
+        self._sarvam_key = os.environ.get("SARVAM_API_KEY", "")
+        self._hf_key = os.environ.get("HF_TOKEN", "")
 
     def transcribe(self, audio_input, language: str = "hi") -> str:
         """
@@ -39,33 +45,60 @@ class IndicASR:
         if isinstance(audio_input, str) and os.path.exists(audio_input):
             with open(audio_input, "rb") as f:
                 audio_bytes = f.read()
+            filename = os.path.basename(audio_input)
         elif isinstance(audio_input, bytes):
             audio_bytes = audio_input
+            filename = "audio.wav"
         else:
             logger.warning("ASR: Invalid input type. Returning empty string.")
             return ""
 
-        # Try API-based transcription
-        return self._transcribe_api(audio_bytes, language)
+        # Try Sarvam Saarika first
+        if self._sarvam_key:
+            result = self._transcribe_sarvam(audio_bytes, filename, language)
+            if result:
+                return result
 
-    def _transcribe_api(self, audio_bytes: bytes, language: str) -> str:
-        """Transcribe via Hugging Face Inference API."""
+        # Fallback to HuggingFace IndicWhisper
+        return self._transcribe_hf(audio_bytes, language)
+
+    def _transcribe_sarvam(self, audio_bytes: bytes, filename: str, language: str) -> str:
+        """Transcribe using Sarvam AI Saarika ASR API."""
         try:
             import requests
+            lang_code = _SARVAM_LANG.get(language, "hi-IN")
+            resp = requests.post(
+                f"{SARVAM_API_BASE}/speech-to-text",
+                headers={"api-subscription-key": self._sarvam_key},
+                files={"file": (filename, audio_bytes, "audio/wav")},
+                data={"language_code": lang_code, "model": "saarika:v2"},
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("transcript", "")
+            logger.warning(f"Sarvam ASR returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"Sarvam ASR failed: {e}")
+        return ""
 
-            model = self._model_id if language == "hi" else "openai/whisper-base"
+    def _transcribe_hf(self, audio_bytes: bytes, language: str) -> str:
+        """Transcribe via HuggingFace Inference API (fallback)."""
+        if not self._hf_key:
+            return ""
+        try:
+            import requests
+            model = "ai4bharat/indicwhisper-hindi" if language == "hi" else "openai/whisper-base"
             resp = requests.post(
                 f"https://api-inference.huggingface.co/models/{model}",
-                headers={"Authorization": f"Bearer {self._api_key}"},
+                headers={"Authorization": f"Bearer {self._hf_key}"},
                 data=audio_bytes,
                 timeout=30,
             )
             if resp.status_code == 200:
-                result = resp.json()
-                return result.get("text", "")
-            logger.warning(f"ASR API returned {resp.status_code}: {resp.text}")
+                return resp.json().get("text", "")
+            logger.warning(f"HF ASR returned {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
-            logger.warning(f"ASR API failed: {e}")
+            logger.warning(f"HF ASR fallback failed: {e}")
         return ""
 
     def transcribe_from_gradio(self, audio_tuple, language: str = "hi") -> str:
@@ -81,7 +114,6 @@ class IndicASR:
             import wave
 
             sr, audio_np = audio_tuple
-            # Convert numpy array to WAV bytes
             buf = io.BytesIO()
             with wave.open(buf, "wb") as wf:
                 wf.setnchannels(1)

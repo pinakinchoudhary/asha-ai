@@ -1,12 +1,11 @@
 # Databricks notebook source
-
 # MAGIC %md
 # MAGIC # 06 — Scheme Eligibility Demo
 # MAGIC ML-assisted evaluation of PMMVY, JSY, and JSSK welfare schemes with rule-based fallback.
 
 # COMMAND ----------
 
-# MAGIC %pip install llama-cpp-python pyyaml
+# MAGIC %pip install requests pyyaml
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -19,7 +18,6 @@ sys.path.insert(0, f"/Workspace{repo_root}")
 
 from src.models.indic_llm import IndicLLM
 from src.scheme_eligibility import SchemeEngine
-from config.settings import LLM_PRIMARY_PATH
 
 # COMMAND ----------
 
@@ -28,10 +26,10 @@ from config.settings import LLM_PRIMARY_PATH
 
 # COMMAND ----------
 
-llm = IndicLLM(model_path=LLM_PRIMARY_PATH, n_ctx=2048, n_threads=4)
+llm = IndicLLM()
 engine = SchemeEngine(llm=llm)
-print(f"LLM loaded: {llm.is_loaded}")
-print(f"Method: {'ML-primary' if llm.is_loaded else 'Rule-based fallback'}")
+print(f"LLM API available: {llm.is_loaded}")
+print(f"Method: {'ML-primary (Sarvam)' if llm.is_loaded else 'Rule-based fallback'}")
 
 # COMMAND ----------
 
@@ -40,7 +38,7 @@ print(f"Method: {'ML-primary' if llm.is_loaded else 'Rule-based fallback'}")
 
 # COMMAND ----------
 
-patients = spark.table("hive_metastore.asha_copilot.patients").limit(50).collect()
+patients = spark.table("workspace.asha_copilot.patients").limit(50).collect()
 
 all_results = []
 for p in patients:
@@ -91,7 +89,7 @@ display(
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Eligible for JSY but show amounts by state
+# MAGIC ### Eligible for JSY — amounts by state
 
 # COMMAND ----------
 
@@ -121,7 +119,6 @@ display(
 
 # COMMAND ----------
 
-# Count by type of missing document
 from pyspark.sql.functions import col, explode, split
 
 missing_breakdown = (

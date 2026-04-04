@@ -1,15 +1,14 @@
 # Databricks notebook source
-
 # MAGIC %md
 # MAGIC # 00 — Setup Database & Tables
-# MAGIC Creates the `asha_copilot` database and all Delta tables in `hive_metastore`.
+# MAGIC Creates the `asha_copilot` schema and all Delta tables in `workspace` catalog.
 # MAGIC **Idempotent** — safe to run multiple times.
 
 # COMMAND ----------
 
-spark.sql("CREATE DATABASE IF NOT EXISTS hive_metastore.asha_copilot")
-spark.sql("USE hive_metastore.asha_copilot")
-print("Database hive_metastore.asha_copilot ready.")
+spark.sql("CREATE SCHEMA IF NOT EXISTS workspace.asha_copilot")
+spark.sql("USE workspace.asha_copilot")
+print("Schema workspace.asha_copilot ready.")
 
 # COMMAND ----------
 
@@ -179,9 +178,9 @@ print("Table: phc_facilities ✓")
 
 # COMMAND ----------
 
-tables = spark.sql("SHOW TABLES IN hive_metastore.asha_copilot").collect()
+tables = spark.sql("SHOW TABLES IN workspace.asha_copilot").collect()
 print(f"\n{'='*50}")
-print(f"ASHA Copilot Database: {len(tables)} tables created")
+print(f"ASHA Copilot Schema: {len(tables)} tables created")
 print(f"{'='*50}")
 for t in tables:
     print(f"  - {t['tableName']}")

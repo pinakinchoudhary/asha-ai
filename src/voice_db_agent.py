@@ -133,7 +133,7 @@ class VoiceDBAgent:
             try:
                 df = self.spark.createDataFrame([row])
                 df.write.format("delta").mode("append").saveAsTable(
-                    "hive_metastore.asha_copilot.patients"
+                    "workspace.asha_copilot.patients"
                 )
                 msg_en = f"Patient {name} (age {row['age']}) registered successfully. ID: {patient_id[:8]}..."
                 msg_hi = f"{name} (umra {row['age']}) ka registration ho gaya. ID: {patient_id[:8]}..."
@@ -194,7 +194,7 @@ class VoiceDBAgent:
             try:
                 df = self.spark.createDataFrame([row])
                 df.write.format("delta").mode("append").saveAsTable(
-                    "hive_metastore.asha_copilot.visits"
+                    "workspace.asha_copilot.visits"
                 )
                 vitals_summary = []
                 if row["bp_systolic"]:
@@ -233,7 +233,7 @@ class VoiceDBAgent:
         try:
             query = f"""
                 SELECT patient_id, name, village
-                FROM hive_metastore.asha_copilot.patients
+                FROM workspace.asha_copilot.patients
                 WHERE lower(name) LIKE '%{name.lower().split()[0]}%'
             """
             if village:

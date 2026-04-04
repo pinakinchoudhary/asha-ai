@@ -207,7 +207,7 @@ class VoicePipeline:
             try:
                 overdue = self.spark.sql(f"""
                     SELECT vaccine_code, due_date, child_name
-                    FROM hive_metastore.asha_copilot.immunizations
+                    FROM workspace.asha_copilot.immunizations
                     WHERE mother_id = '{mother_id}' AND missed_flag = true
                     ORDER BY due_date
                 """).collect()

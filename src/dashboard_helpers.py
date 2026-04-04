@@ -9,7 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-DB = "hive_metastore.asha_copilot"
+DB = "workspace.asha_copilot"
 
 
 def get_high_risk_patients(spark):

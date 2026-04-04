@@ -1,5 +1,4 @@
 # Databricks notebook source
-
 # MAGIC %md
 # MAGIC # 07 — Immunization Tracker
 # MAGIC Tracks Universal Immunization Programme (UIP) schedules and flags overdue vaccines.
@@ -19,7 +18,7 @@ sys.path.insert(0, f"/Workspace{repo_root}")
 
 # COMMAND ----------
 
-imm_df = spark.table("hive_metastore.asha_copilot.immunizations")
+imm_df = spark.table("workspace.asha_copilot.immunizations")
 total = imm_df.count()
 administered = imm_df.filter("administered_date IS NOT NULL").count()
 missed = imm_df.filter("missed_flag = true").count()
@@ -46,7 +45,7 @@ display(
                 SUM(CASE WHEN administered_date IS NOT NULL THEN 1 ELSE 0 END) * 100.0 / COUNT(*),
                 1
             ) as coverage_pct
-        FROM hive_metastore.asha_copilot.immunizations
+        FROM workspace.asha_copilot.immunizations
         GROUP BY vaccine_code
         ORDER BY
             CASE
@@ -83,9 +82,9 @@ display(
             p.name as mother_name,
             p.phone as mother_phone,
             f.name as nearest_facility
-        FROM hive_metastore.asha_copilot.immunizations i
-        JOIN hive_metastore.asha_copilot.patients p ON i.mother_id = p.patient_id
-        LEFT JOIN hive_metastore.asha_copilot.phc_facilities f ON i.nearest_phc_id = f.phc_id
+        FROM workspace.asha_copilot.immunizations i
+        JOIN workspace.asha_copilot.patients p ON i.mother_id = p.patient_id
+        LEFT JOIN workspace.asha_copilot.phc_facilities f ON i.nearest_phc_id = f.phc_id
         WHERE i.missed_flag = true
         ORDER BY DATEDIFF(current_date(), i.due_date) DESC
         LIMIT 20
@@ -106,7 +105,7 @@ display(
             COUNT(DISTINCT child_id) as children_affected,
             COUNT(*) as total_overdue_doses,
             COLLECT_SET(vaccine_code) as overdue_vaccines
-        FROM hive_metastore.asha_copilot.immunizations
+        FROM workspace.asha_copilot.immunizations
         WHERE missed_flag = true
         GROUP BY village
         ORDER BY children_affected DESC
@@ -124,12 +123,12 @@ display(
     spark.sql("""
         WITH bcg AS (
             SELECT child_id
-            FROM hive_metastore.asha_copilot.immunizations
+            FROM workspace.asha_copilot.immunizations
             WHERE vaccine_code = 'BCG' AND administered_date IS NOT NULL
         ),
         mr1 AS (
             SELECT child_id
-            FROM hive_metastore.asha_copilot.immunizations
+            FROM workspace.asha_copilot.immunizations
             WHERE vaccine_code = 'MR-1' AND administered_date IS NOT NULL
         )
         SELECT
@@ -161,6 +160,6 @@ print(f"Coverage rate: {administered*100//total if total else 0}%")
 print(f"Overdue doses: {missed}")
 villages = spark.sql("""
     SELECT COUNT(DISTINCT village) as v
-    FROM hive_metastore.asha_copilot.immunizations WHERE missed_flag = true
+    FROM workspace.asha_copilot.immunizations WHERE missed_flag = true
 """).collect()[0]["v"]
 print(f"Villages with overdue: {villages}")

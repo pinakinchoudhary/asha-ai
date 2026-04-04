@@ -1,8 +1,8 @@
 """
 IndicTrans2 translation wrapper.
 
-Primary: Local ONNX model (indictrans2-indic-en-dist-200M)
-Fallback: AI4Bharat / Sarvam hosted API
+Primary: Sarvam AI Mayura translation API (Hindi ↔ English)
+Fallback: AI4Bharat IndicTrans2 via HuggingFace Inference API
 """
 
 import logging
@@ -10,35 +10,44 @@ import os
 
 logger = logging.getLogger(__name__)
 
+SARVAM_API_BASE = "https://api.sarvam.ai"
+
+# Sarvam language codes
+_SARVAM_LANG = {
+    "hi": "hi-IN",
+    "en": "en-IN",
+    "ta": "ta-IN",
+    "bn": "bn-IN",
+    "te": "te-IN",
+    "mr": "mr-IN",
+}
+
+# HuggingFace IndicTrans2 language codes
+_HF_LANG = {
+    "hi": "hin_Deva",
+    "en": "eng_Latn",
+    "ta": "tam_Taml",
+    "bn": "ben_Beng",
+    "te": "tel_Telu",
+    "mr": "mar_Deva",
+}
+
 
 class IndicTranslator:
-    """Hindi ↔ English translator using IndicTrans2."""
+    """Hindi ↔ English translator using Sarvam Mayura API."""
 
     def __init__(self, model_dir: str = None):
-        self._model = None
-        self._tokenizer = None
-        self._model_dir = model_dir
-        self._load_model()
-
-    def _load_model(self):
-        """Try loading IndicTrans2 ONNX model locally."""
-        if not self._model_dir or not os.path.exists(self._model_dir):
+        # model_dir is ignored — Sarvam API is used instead of local ONNX
+        self._sarvam_key = os.environ.get("SARVAM_API_KEY", "")
+        self._hf_key = os.environ.get("HF_TOKEN", "")
+        if not self._sarvam_key:
             logger.warning(
-                f"IndicTrans2 model not found at {self._model_dir}. Using API fallback."
+                "SARVAM_API_KEY not set. Translation will use HF API fallback."
             )
-            return
-        try:
-            import onnxruntime as ort
-            model_path = os.path.join(self._model_dir, "model.onnx")
-            if os.path.exists(model_path):
-                self._model = ort.InferenceSession(model_path)
-                logger.info("Loaded IndicTrans2 ONNX model.")
-        except Exception as e:
-            logger.warning(f"Failed to load IndicTrans2 ONNX: {e}")
 
     @property
     def is_loaded(self) -> bool:
-        return self._model is not None
+        return bool(self._sarvam_key or self._hf_key)
 
     def to_english(self, text: str, src_lang: str = "hi") -> str:
         """Translate from Indic language to English."""
@@ -46,11 +55,7 @@ class IndicTranslator:
             return text
         if src_lang == "en":
             return text
-        # Try local model first
-        if self._model:
-            return self._translate_local(text, src_lang, "en")
-        # API fallback
-        return self._translate_api(text, src_lang, "en")
+        return self._translate(text, src_lang, "en")
 
     def from_english(self, text: str, tgt_lang: str = "hi") -> str:
         """Translate from English to Indic language."""
@@ -58,37 +63,58 @@ class IndicTranslator:
             return text
         if tgt_lang == "en":
             return text
-        if self._model:
-            return self._translate_local(text, "en", tgt_lang)
-        return self._translate_api(text, "en", tgt_lang)
+        return self._translate(text, "en", tgt_lang)
 
-    def _translate_local(self, text: str, src_lang: str, tgt_lang: str) -> str:
-        """Translate using local ONNX model."""
-        try:
-            # Simplified ONNX inference — actual implementation depends on
-            # the specific IndicTrans2 ONNX export format
-            inputs = {"input_text": [text], "src_lang": [src_lang], "tgt_lang": [tgt_lang]}
-            result = self._model.run(None, inputs)
-            return result[0][0] if result else text
-        except Exception as e:
-            logger.warning(f"Local translation failed: {e}. Trying API.")
-            return self._translate_api(text, src_lang, tgt_lang)
+    def _translate(self, text: str, src_lang: str, tgt_lang: str) -> str:
+        """Translate via Sarvam Mayura API, fallback to HF."""
+        if self._sarvam_key:
+            result = self._translate_sarvam(text, src_lang, tgt_lang)
+            if result and result != text:
+                return result
+        return self._translate_hf(text, src_lang, tgt_lang)
 
-    def _translate_api(self, text: str, src_lang: str, tgt_lang: str) -> str:
-        """Translate using AI4Bharat / Sarvam API."""
+    def _translate_sarvam(self, text: str, src_lang: str, tgt_lang: str) -> str:
+        """Translate using Sarvam AI Mayura API."""
         try:
             import requests
+            src = _SARVAM_LANG.get(src_lang, f"{src_lang}-IN")
+            tgt = _SARVAM_LANG.get(tgt_lang, f"{tgt_lang}-IN")
+            resp = requests.post(
+                f"{SARVAM_API_BASE}/translate",
+                headers={
+                    "api-subscription-key": self._sarvam_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "input": text,
+                    "source_language_code": src,
+                    "target_language_code": tgt,
+                    "speaker_gender": "Female",
+                    "mode": "formal",
+                    "model": "mayura:v1",
+                    "enable_preprocessing": False,
+                },
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("translated_text", text)
+            logger.warning(f"Sarvam translate returned {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"Sarvam translate failed: {e}")
+        return ""
 
-            # Try AI4Bharat IndicTrans2 on HuggingFace
-            api_key = os.environ.get("HF_TOKEN", "")
-            lang_map = {"hi": "hin_Deva", "en": "eng_Latn", "ta": "tam_Taml",
-                        "bn": "ben_Beng", "te": "tel_Telu", "mr": "mar_Deva"}
-            src = lang_map.get(src_lang, src_lang)
-            tgt = lang_map.get(tgt_lang, tgt_lang)
-
+    def _translate_hf(self, text: str, src_lang: str, tgt_lang: str) -> str:
+        """Translate using AI4Bharat IndicTrans2 on HuggingFace (fallback)."""
+        if not self._hf_key:
+            logger.warning("No HF_TOKEN. Returning original text.")
+            return text
+        try:
+            import requests
+            src = _HF_LANG.get(src_lang, src_lang)
+            tgt = _HF_LANG.get(tgt_lang, tgt_lang)
             resp = requests.post(
                 "https://api-inference.huggingface.co/models/ai4bharat/indictrans2-indic-en-dist-200M",
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers={"Authorization": f"Bearer {self._hf_key}"},
                 json={"inputs": text, "parameters": {"src_lang": src, "tgt_lang": tgt}},
                 timeout=15,
             )
@@ -98,9 +124,7 @@ class IndicTranslator:
                     return result[0].get("translation_text", text)
                 return result.get("translation_text", text)
         except Exception as e:
-            logger.warning(f"Translation API failed: {e}")
-
-        # Last resort: return original text (better than crashing)
+            logger.warning(f"HF translation fallback failed: {e}")
         logger.warning("All translation methods failed. Returning original text.")
         return text
 

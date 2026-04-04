@@ -1,14 +1,13 @@
 # Databricks notebook source
-
 # MAGIC %md
 # MAGIC # 05 — Voice-Driven CRUD Demo
 # MAGIC ASHA adds and updates patient records via voice commands in Hindi/English.
 # MAGIC
-# MAGIC **Flow**: ASHA speaks (Hindi) → ASR → Translate → LLM Entity Extraction → Delta Table CRUD → Confirm (Hindi)
+# MAGIC **Flow**: ASHA speaks (Hindi) → ASR → Sarvam Translate → Sarvam LLM Entity Extraction → Delta Table CRUD → Confirm (Hindi)
 
 # COMMAND ----------
 
-# MAGIC %pip install llama-cpp-python gtts
+# MAGIC %pip install requests gtts
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -23,7 +22,6 @@ from src.models.indic_llm import IndicLLM
 from src.models.indic_translate import IndicTranslator
 from src.models.indic_asr import IndicASR
 from src.voice_db_agent import VoiceDBAgent
-from config.settings import LLM_PRIMARY_PATH, TRANSLATE_MODEL_DIR
 
 # COMMAND ----------
 
@@ -32,13 +30,13 @@ from config.settings import LLM_PRIMARY_PATH, TRANSLATE_MODEL_DIR
 
 # COMMAND ----------
 
-llm = IndicLLM(model_path=LLM_PRIMARY_PATH, n_ctx=2048, n_threads=4)
-translator = IndicTranslator(model_dir=TRANSLATE_MODEL_DIR)
+llm = IndicLLM()
+translator = IndicTranslator()
 asr = IndicASR()
 
 agent = VoiceDBAgent(llm=llm, translator=translator, asr=asr, spark=spark)
 
-print(f"LLM loaded: {llm.is_loaded}")
+print(f"LLM API available: {llm.is_loaded}")
 print("Voice DB Agent ready")
 
 # COMMAND ----------
@@ -56,7 +54,7 @@ print("PATIENTS TABLE BEFORE:")
 display(
     spark.sql("""
         SELECT name, age, village, bpl_status, registered_date
-        FROM hive_metastore.asha_copilot.patients
+        FROM workspace.asha_copilot.patients
         ORDER BY registered_date DESC
         LIMIT 5
     """)
@@ -64,7 +62,6 @@ display(
 
 # COMMAND ----------
 
-# Simulate Hindi voice command (text passthrough for demo)
 hindi_command = "Naya patient register karo — Meena Kumari, umra 22 saal, gaon Sultanpur, BPL card hai, Aadhaar hai"
 
 print(f"ASHA says: \"{hindi_command}\"")
@@ -85,7 +82,7 @@ print("PATIENTS TABLE AFTER:")
 display(
     spark.sql("""
         SELECT name, age, village, bpl_status, aadhaar_registered, registered_date
-        FROM hive_metastore.asha_copilot.patients
+        FROM workspace.asha_copilot.patients
         WHERE lower(name) LIKE '%meena%'
         ORDER BY registered_date DESC
     """)
@@ -145,19 +142,13 @@ print(f"Response: {result['message_en']}")
 
 # COMMAND ----------
 
-status_command = "Meena Kumari ka status batao"
-
-print(f"ASHA says: \"{status_command}\"")
-print("-" * 60)
-
-# This routes to protocol_question intent but we can check directly
 display(
     spark.sql("""
         SELECT p.name, p.age, p.village, p.bpl_status,
                v.visit_date, v.bp_systolic, v.bp_diastolic, v.hemoglobin_g_dl,
                v.clinical_notes
-        FROM hive_metastore.asha_copilot.patients p
-        LEFT JOIN hive_metastore.asha_copilot.visits v ON p.patient_id = v.patient_id
+        FROM workspace.asha_copilot.patients p
+        LEFT JOIN workspace.asha_copilot.visits v ON p.patient_id = v.patient_id
         WHERE lower(p.name) LIKE '%meena%'
         ORDER BY v.visit_date DESC
     """)
@@ -170,7 +161,7 @@ display(
 # MAGIC
 # MAGIC The Voice DB Agent successfully:
 # MAGIC 1. Parsed Hindi natural language commands
-# MAGIC 2. Classified intent (add_patient, log_visit)
+# MAGIC 2. Classified intent (add_patient, log_visit) via Sarvam LLM
 # MAGIC 3. Extracted structured entities from unstructured speech
 # MAGIC 4. Validated data before writing to Delta tables
 # MAGIC 5. Confirmed actions back in Hindi

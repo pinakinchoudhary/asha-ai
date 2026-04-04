@@ -1,14 +1,13 @@
 # Databricks notebook source
-
 # MAGIC %md
 # MAGIC # 04 — Clinical Triage Demo
 # MAGIC ML-primary triage with rule-based fallback and automatic doctor/PHC assignment.
 # MAGIC
-# MAGIC **Flow**: Patient vitals → ML Assessment → Risk Classification (RED/YELLOW/GREEN) → Doctor + PHC Assignment
+# MAGIC **Flow**: Patient vitals → Sarvam AI Assessment → Risk Classification (RED/YELLOW/GREEN) → Doctor + PHC Assignment
 
 # COMMAND ----------
 
-# MAGIC %pip install llama-cpp-python pyyaml
+# MAGIC %pip install pyyaml requests
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -23,7 +22,6 @@ sys.path.insert(0, f"/Workspace{repo_root}")
 
 from src.models.indic_llm import IndicLLM
 from src.triage_engine import TriageEngine
-from config.settings import LLM_PRIMARY_PATH
 
 # COMMAND ----------
 
@@ -32,12 +30,12 @@ from config.settings import LLM_PRIMARY_PATH
 
 # COMMAND ----------
 
-llm = IndicLLM(model_path=LLM_PRIMARY_PATH, n_ctx=2048, n_threads=4)
+llm = IndicLLM()
 rules_path = f"/Workspace{repo_root}/config/danger_signs.yaml"
 engine = TriageEngine(llm=llm, rules_path=rules_path)
 
-print(f"LLM loaded: {llm.is_loaded}")
-print(f"Method: {'ML-primary' if llm.is_loaded else 'Rule-based fallback'}")
+print(f"LLM API available: {llm.is_loaded}")
+print(f"Method: {'ML-primary (Sarvam)' if llm.is_loaded else 'Rule-based fallback'}")
 
 # COMMAND ----------
 
@@ -46,8 +44,8 @@ print(f"Method: {'ML-primary' if llm.is_loaded else 'Rule-based fallback'}")
 
 # COMMAND ----------
 
-visits_df = spark.table("hive_metastore.asha_copilot.visits")
-patients_df = spark.table("hive_metastore.asha_copilot.patients")
+visits_df = spark.table("workspace.asha_copilot.visits")
+patients_df = spark.table("workspace.asha_copilot.patients")
 
 # Join to get village/PHC context
 visits_with_context = visits_df.join(
@@ -98,7 +96,7 @@ print(f"Triaged {len(triage_results)} visits")
 
 alerts_df = spark.createDataFrame(triage_results)
 alerts_df.write.format("delta").mode("overwrite").saveAsTable(
-    "hive_metastore.asha_copilot.triage_alerts"
+    "workspace.asha_copilot.triage_alerts"
 )
 print("Triage alerts written to Delta table")
 
@@ -112,7 +110,7 @@ print("Triage alerts written to Delta table")
 display(
     spark.sql("""
         SELECT risk_level, method, COUNT(*) as count
-        FROM hive_metastore.asha_copilot.triage_alerts
+        FROM workspace.asha_copilot.triage_alerts
         GROUP BY risk_level, method
         ORDER BY
             CASE risk_level WHEN 'RED' THEN 0 WHEN 'YELLOW' THEN 1 ELSE 2 END
@@ -138,8 +136,8 @@ display(
             t.assigned_doctor_name AS doctor,
             t.assigned_doctor_phone AS phone,
             t.method
-        FROM hive_metastore.asha_copilot.triage_alerts t
-        JOIN hive_metastore.asha_copilot.patients p ON t.patient_id = p.patient_id
+        FROM workspace.asha_copilot.triage_alerts t
+        JOIN workspace.asha_copilot.patients p ON t.patient_id = p.patient_id
         WHERE t.risk_level = 'RED'
         ORDER BY t.urgency_hours ASC
         LIMIT 20
@@ -153,10 +151,9 @@ display(
 
 # COMMAND ----------
 
-# Pick a patient with multiple visits
 patient_with_visits = spark.sql("""
     SELECT patient_id, COUNT(*) as n_visits
-    FROM hive_metastore.asha_copilot.visits
+    FROM workspace.asha_copilot.visits
     GROUP BY patient_id
     HAVING COUNT(*) >= 3
     LIMIT 1
@@ -176,8 +173,8 @@ if patient_with_visits:
                 t.risk_level,
                 t.sign_name,
                 t.assigned_doctor_name
-            FROM hive_metastore.asha_copilot.visits v
-            LEFT JOIN hive_metastore.asha_copilot.triage_alerts t
+            FROM workspace.asha_copilot.visits v
+            LEFT JOIN workspace.asha_copilot.triage_alerts t
                 ON v.visit_id = t.visit_id
             WHERE v.patient_id = '{pid}'
             ORDER BY v.visit_number
