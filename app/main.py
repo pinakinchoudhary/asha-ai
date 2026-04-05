@@ -192,14 +192,14 @@ def build_app(spark):
     def voice_chat(audio_tuple, language, history):
         """Transcribe microphone audio (Sarvam Saarika) then process through pipeline."""
         if audio_tuple is None:
-            return history, None, None
+            return history, None
         lang_code = "hi" if language == "Hindi" else "en"
         text = asr.transcribe_from_gradio(audio_tuple, lang_code)
         if not text or not text.strip():
             history.append(("🎤 (audio)", "Could not transcribe. Please speak clearly and try again."))
-            return history, None, None
+            return history, None
         new_history, _, tts_audio = copilot_chat(text, language, history)
-        return new_history, None, tts_audio
+        return new_history, tts_audio
 
     def add_patient_voice(command, language):
         lang_code = "hi" if language == "Hindi" else "en"
@@ -315,7 +315,7 @@ def build_app(spark):
             # ── Event handlers ─────────────────────────────────────────────
             voice_btn.click(
                 voice_chat, [mic_input, lang_select, chatbot],
-                [chatbot, mic_input, tts_output],
+                [chatbot, tts_output],
             )
             msg_input.submit(
                 copilot_chat, [msg_input, lang_select, chatbot],

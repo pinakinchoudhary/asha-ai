@@ -92,7 +92,7 @@ class IndicASR:
                 f"{SARVAM_API_BASE}/speech-to-text",
                 headers={"api-subscription-key": self._sarvam_key},
                 files={"file": (filename, audio_bytes, "audio/wav")},
-                data={"language_code": lang_code, "model": "saarika:v2"},
+                data={"language_code": lang_code, "model": "saarika:v2.5"},
                 timeout=30,
             )
             if resp.status_code == 200:

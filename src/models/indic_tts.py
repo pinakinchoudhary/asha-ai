@@ -85,7 +85,7 @@ class IndicTTS:
                 json={
                     "inputs": [text[:500]],  # Sarvam max ~500 chars per request
                     "target_language_code": lang_code,
-                    "speaker": "meera",
+                    "speaker": "anushka",
                     "model": "bulbul:v2",
                     "enable_preprocessing": True,
                 },
