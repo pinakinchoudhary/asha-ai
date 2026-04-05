@@ -153,45 +153,60 @@ def build_app(spark):
         except Exception:
             return None
 
-    # ── Tab handlers ─────────────────────────────────────────────────────────
+    # ── Unified turn handler (text + audio) ────────────────────────────────
+    # Matches the pattern from the nyaya-dhwani demo: one function for
+    # submit.click, msg.submit, AND audio_in.stop_recording.
+    # Returns (msg_clear, history, tts_audio, audio_in_clear).
 
-    def copilot_chat(message, language, history):
-        """Process text message → pipeline → chatbot + TTS audio."""
-        if not message or not message.strip():
-            return history, "", None
-        lang_code = "hi" if language == "Hindi" else "en"
-        response = pipeline.process(message, language=lang_code)
-        reply = response.text_response_local if lang_code == "hi" else response.text_response_en
-        if not reply:
-            reply = response.text_response_en or "No response generated."
-        extras = []
-        if response.triage_result:
-            extras.append(f"\n**Triage**: {response.triage_result.get('risk_level', 'N/A')}")
-        if response.scheme_results:
-            eligible = [r["scheme_id"] for r in response.scheme_results if r.get("eligible")]
-            if eligible:
-                extras.append(f"\n**Eligible Schemes**: {', '.join(eligible)}")
-        if response.db_changes and response.db_changes.get("success"):
-            extras.append(f"\n**DB Update**: {response.db_changes.get('db_action', '')}")
-        history.append((message, reply + "".join(extras)))
-        tts_audio = _wav_bytes_to_numpy(response.audio_bytes)
-        return history, "", tts_audio
+    def run_turn(
+        message: str,
+        audio: tuple | None,
+        language: str,
+        history: list | None,
+    ) -> tuple[str, list, tuple | None, None]:
+        import numpy as np
+        history = [list(pair) for pair in history] if history else []
+        try:
+            text = (message or "").strip()
+            user_show = text
 
-    def voice_chat(audio_tuple, language, history):
-        """Transcribe audio → pipeline → chatbot + TTS.
+            # Prefer typed text over audio (Gradio retains stale audio recordings)
+            if not text and audio is not None:
+                sr, data = audio
+                if data is not None and np.asarray(data).size > 0:
+                    lang_code = "hi" if language == "Hindi" else "en"
+                    text = asr.transcribe_from_gradio(audio, lang_code)
+                    if text and text.strip():
+                        user_show = f"🎤 {text}"
+                    else:
+                        history.append(["🎤 (audio)", "Could not transcribe. Please speak clearly and try again."])
+                        return "", history, None, None
 
-        Returns (chatbot, tts_audio, None) — the third None explicitly
-        clears mic_input so Gradio doesn't show stale audio.
-        """
-        if audio_tuple is None:
-            return history, None, None
-        lang_code = "hi" if language == "Hindi" else "en"
-        text = asr.transcribe_from_gradio(audio_tuple, lang_code)
-        if not text or not text.strip():
-            history.append(("🎤 (audio)", "Could not transcribe. Please speak clearly and try again."))
-            return history, None, None
-        new_history, _, tts_audio = copilot_chat(text, language, history)
-        return new_history, tts_audio, None
+            if not text:
+                return "", history, None, None
+
+            lang_code = "hi" if language == "Hindi" else "en"
+            response = pipeline.process(text, language=lang_code)
+            reply = response.text_response_local if lang_code == "hi" else response.text_response_en
+            if not reply:
+                reply = response.text_response_en or "No response generated."
+            extras = []
+            if response.triage_result:
+                extras.append(f"\n**Triage**: {response.triage_result.get('risk_level', 'N/A')}")
+            if response.scheme_results:
+                eligible = [r["scheme_id"] for r in response.scheme_results if r.get("eligible")]
+                if eligible:
+                    extras.append(f"\n**Eligible Schemes**: {', '.join(eligible)}")
+            if response.db_changes and response.db_changes.get("success"):
+                extras.append(f"\n**DB Update**: {response.db_changes.get('db_action', '')}")
+            history.append([user_show, reply + "".join(extras)])
+            tts_audio = _wav_bytes_to_numpy(response.audio_bytes)
+            return "", history, tts_audio, None
+        except Exception as e:
+            logger.exception("run_turn")
+            err = f"**Error:** {e}"
+            history.append([message or "🎤 (audio)", err])
+            return "", history, None, None
 
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -303,23 +318,18 @@ def build_app(spark):
                 interactive=False,
             )
 
-            # Auto-submit when user stops recording.
-            # mic_input is both an input (audio captured at event-fire time)
-            # and an output (returning None clears the widget explicitly).
-            mic_input.stop_recording(
-                voice_chat,
-                inputs=[mic_input, lang_select, chatbot],
-                outputs=[chatbot, tts_output, mic_input],
+            # Same handler + same I/O mapping for all three triggers.
+            # msg_input and mic_input are both inputs AND outputs:
+            # returning "" clears the text box, returning None clears the mic.
+            _run_turn_io = dict(
+                fn=run_turn,
+                inputs=[msg_input, mic_input, lang_select, chatbot],
+                outputs=[msg_input, chatbot, tts_output, mic_input],
             )
-
-            msg_input.submit(
-                copilot_chat, [msg_input, lang_select, chatbot],
-                [chatbot, msg_input, tts_output],
-            )
-            send_btn.click(
-                copilot_chat, [msg_input, lang_select, chatbot],
-                [chatbot, msg_input, tts_output],
-            )
+            send_btn.click(**_run_turn_io)
+            msg_input.submit(**_run_turn_io)
+            # Auto-submit when user stops recording (no need to click Send).
+            mic_input.stop_recording(**_run_turn_io)
 
             gr.Examples(
                 examples=[
