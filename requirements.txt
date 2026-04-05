@@ -1,29 +1,32 @@
-# Core ML / Vector Search
-faiss-cpu==1.7.4
+# ── UI ─────────────────────────────────────────────────────────────────────
+# Pin to 4.44.x — matches all Databricks app-templates.
+# gradio-client MUST be exactly 1.3.0 to match gradio 4.44.x wheel metadata.
+# Newer gradio-client versions break api_info JSON schema parsing on Chatbot.
+gradio~=4.44.0
+gradio-client==1.3.0
+huggingface-hub~=0.35.3
+
+# ── Databricks ──────────────────────────────────────────────────────────────
+# SDK provides OAuth M2M auth + secret scope access (no PAT needed in Apps).
+# databricks-connect provides a SparkSession that runs on serverless compute.
+databricks-sdk
+databricks-connect>=15.4.0
+
+# ── ML / Vector search ──────────────────────────────────────────────────────
+# faiss-cpu 1.8+ requires NumPy 2 which conflicts with Databricks runtime.
+faiss-cpu>=1.7.0,<1.8
 sentence-transformers==2.2.2
+numpy>=1.24,<2
 
-# LLM inference on CPU
-llama-cpp-python==0.2.56
-ctransformers==0.2.27
-onnxruntime==1.17.0
-
-# RAG pipeline
-langchain==0.1.20
-langchain-community==0.0.38
+# ── RAG ─────────────────────────────────────────────────────────────────────
 PyPDF2==3.0.1
 
-# Translation / Voice
+# ── Voice / TTS ─────────────────────────────────────────────────────────────
 gtts==2.5.1
+
+# ── Config / HTTP ───────────────────────────────────────────────────────────
+pyyaml==6.0.1
 requests==2.31.0
 
-# Data generation
-faker==24.0.0
-
-# Config
-pyyaml==6.0.1
-
-# UI
-gradio==4.19.2
-plotly==5.18.0
-
-# Note: pyspark, mlflow, databricks-sdk are pre-installed on Databricks runtime
+# Note: pyspark, mlflow, pandas are pre-installed on Databricks runtime.
+# databricks-connect bundles its own pyspark — do not pin pyspark separately.

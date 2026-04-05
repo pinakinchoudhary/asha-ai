@@ -12,7 +12,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install faiss-cpu sentence-transformers PyPDF2 "gradio~=4.44.0" "gradio-client==1.3.0" "huggingface-hub~=0.35.3" gtts pyyaml requests
+# MAGIC %pip install "gradio~=4.44.0" "gradio-client==1.3.0" "huggingface-hub~=0.35.3" "faiss-cpu>=1.7.0,<1.8" sentence-transformers PyPDF2 gtts pyyaml requests
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -330,27 +330,15 @@ with gr.Blocks(
 
 # MAGIC %md
 # MAGIC ## Launch the App
-
-# COMMAND ----------
-
-# Download missing frpc tunnel binary for aarch64 (ARM64) Databricks clusters.
-# share=True requires this binary; it's not bundled in the gradio wheel for this arch.
-import importlib.util, os, stat, urllib.request
-
-_gradio_dir = os.path.dirname(importlib.util.find_spec("gradio").origin)
-_frpc_path = os.path.join(_gradio_dir, "frpc_linux_aarch64_v0.2")
-if not os.path.exists(_frpc_path):
-    print("Downloading frpc tunnel binary for aarch64...")
-    urllib.request.urlretrieve(
-        "https://cdn-media.huggingface.co/frpc-gradio-0.2/frpc_linux_aarch64",
-        _frpc_path,
-    )
-    os.chmod(_frpc_path, os.stat(_frpc_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    print(f"frpc binary ready at {_frpc_path}")
-else:
-    print("frpc binary already present.")
+# MAGIC
+# MAGIC **Note:** This notebook is for development/testing only.
+# MAGIC For the real deployment, use **Compute → Apps → Create** and point at this repo.
+# MAGIC The `app.yaml` at the repo root defines the entry point (`python app/main.py`).
 
 # COMMAND ----------
 
 app.queue()
-app.launch(share=True)
+# Bare launch — no share=, no server_name=, no server_port=.
+# Access the app via the cluster's built-in port proxy:
+# https://<workspace>/driver-proxy/o/<org-id>/<cluster-id>/7860/
+app.launch()

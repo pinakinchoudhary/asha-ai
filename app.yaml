@@ -1,0 +1,13 @@
+# Databricks Apps runtime configuration.
+# https://docs.databricks.com/aws/en/dev-tools/databricks-apps/app-runtime
+#
+# Deploy: Compute → Apps → Create → connect this Git repo → Deploy
+# The app runs as: python app/main.py
+# Secrets (SARVAM_API_KEY, HF_TOKEN, GROQ_API_KEY) are loaded at startup
+# from the 'asha-ai' Databricks secret scope via the SDK (see app/main.py).
+
+command: ["python", "app/main.py"]
+
+env:
+  - name: "LOG_LEVEL"
+    value: "INFO"
