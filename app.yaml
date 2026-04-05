@@ -5,8 +5,11 @@
 # The app runs as: python app/main.py
 # Secrets (SARVAM_API_KEY, HF_TOKEN, GROQ_API_KEY) are loaded at startup
 # from the 'asha-ai' Databricks secret scope via the SDK (see app/main.py).
-
-command: ["python", "app/main.py"]
+# Update your app.yaml command to install ffmpeg first
+command:
+  - "bash"
+  - "-c"
+  - "apt-get update && apt-get install -y ffmpeg && python app/main.py"
 
 env:
   - name: "LOG_LEVEL"

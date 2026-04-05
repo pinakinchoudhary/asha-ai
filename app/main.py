@@ -190,16 +190,22 @@ def build_app(spark):
         return history, "", tts_audio
 
     def voice_chat(audio_tuple, language, history):
-        """Transcribe microphone audio (Sarvam Saarika) then process through pipeline."""
         if audio_tuple is None:
-            return history, None
+            # If empty, skip the update entirely to avoid clearing the chat
+            return gr.skip(), gr.skip(), gr.skip()
+            
         lang_code = "hi" if language == "Hindi" else "en"
         text = asr.transcribe_from_gradio(audio_tuple, lang_code)
+        
         if not text or not text.strip():
             history.append(("🎤 (audio)", "Could not transcribe. Please speak clearly and try again."))
-            return history, None
+            # Return None for tts_output and mic_input to clear them
+            return history, None, None
+            
         new_history, _, tts_audio = copilot_chat(text, language, history)
-        return new_history, tts_audio
+        
+        # The third 'None' clears the microphone input box
+        return new_history, tts_audio, None
 
     def add_patient_voice(command, language):
         lang_code = "hi" if language == "Hindi" else "en"
@@ -311,6 +317,12 @@ def build_app(spark):
 
             # ── Event handlers ─────────────────────────────────────────────
             # Auto-process when recording stops (before Gradio resets the component)
+            # ── Event handlers ─────────────────────────────────────────────
+            mic_input.stop_recording(
+                voice_chat, 
+                inputs=[mic_input, lang_select, chatbot],
+                outputs=[chatbot, tts_output, mic_input],  # <--- Add mic_input here
+            )
             mic_input.stop_recording(
                 voice_chat, [mic_input, lang_select, chatbot],
                 [chatbot, tts_output],
