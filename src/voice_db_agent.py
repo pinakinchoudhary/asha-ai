@@ -273,19 +273,36 @@ class VoiceDBAgent:
                 """).collect()
 
             if not rows:
-                msg_en = "No patients found matching that name."
-                msg_hi = "Yeh naam ka koi patient nahi mila."
-            else:
+                msg = "No patients found matching that name. / Yeh naam ka koi patient nahi mila."
+                return {
+                    "success": True, "intent": "query_patient", "entities": entities,
+                    "db_action": "SELECT patients", "message_en": msg, "message_hi": msg,
+                    "original_text": original, "translated_text": translated,
+                }
+
+            patients_data = [dict(r.asDict()) for r in rows]
+
+            # For "show all" queries, return a formatted list
+            is_list_query = not name or name.lower() in ("all", "sab", "sabhi", "everyone")
+            if is_list_query:
                 lines = [
                     f"- {r['name']} (umra {r['age']}, gaon {r['village']}, PHC {r['nearest_phc_id']})"
                     for r in rows
                 ]
-                msg_en = f"{len(rows)} patient(s) found:\n" + "\n".join(lines)
-                msg_hi = f"{len(rows)} patient(s) mile:\n" + "\n".join(lines)
+                msg = f"{len(rows)} patient(s) mile:\n" + "\n".join(lines)
+            else:
+                # Use LLM to answer the specific question in the same language
+                msg = self.llm.answer_patient_query(original, patients_data)
+                if not msg:
+                    lines = [
+                        f"- {r['name']} (umra {r['age']}, gaon {r['village']}, PHC {r['nearest_phc_id']})"
+                        for r in rows
+                    ]
+                    msg = "\n".join(lines)
 
             return {
                 "success": True, "intent": "query_patient", "entities": entities,
-                "db_action": "SELECT patients", "message_en": msg_en, "message_hi": msg_hi,
+                "db_action": "SELECT patients", "message_en": msg, "message_hi": msg,
                 "original_text": original, "translated_text": translated,
             }
         except Exception as e:

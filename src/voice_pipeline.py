@@ -127,8 +127,10 @@ class VoicePipeline:
         if self.voice_db_agent:
             result = self.voice_db_agent.process_voice_command(text_local, language)
             response.db_changes = result
-            response.text_response_en = result.get("message_en", "")
-            response.text_response_local = result.get("message_hi", "")
+            # LLM already answers in the question's language — use the same msg for both
+            msg = result.get("message_en", "")
+            response.text_response_en = msg
+            response.text_response_local = msg  # skip re-translation; LLM matched language
         return response
 
     def _handle_crud(self, text_local, text_en, language, intent, response):

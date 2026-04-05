@@ -202,6 +202,20 @@ class IndicLLM:
             logger.warning(f"Failed to parse entities from LLM output: {result[:200]}")
         return {}
 
+    def answer_patient_query(self, question: str, patients: list) -> str:
+        """Answer a specific patient question from retrieved records, in the same language as the question."""
+        prompt = (
+            "You are a healthcare assistant for ASHA workers in India. "
+            "Answer the question below using ONLY the patient records provided. "
+            "IMPORTANT: Reply in the EXACT SAME LANGUAGE as the question — if the question is in Hindi, answer in Hindi; if English, answer in English. "
+            "Be brief and direct. For a single patient query, answer only what was asked (e.g. just the age, just the village). "
+            "Do NOT list all patients unless the question explicitly asks for a list.\n\n"
+            f"Patient records:\n{json.dumps(patients, indent=2, ensure_ascii=False)}\n\n"
+            f"Question: {question}\n\n"
+            "Answer:"
+        )
+        return self.generate(prompt, max_tokens=150, temperature=0.1)
+
     def generate_clinical_assessment(self, visit_data: dict) -> dict:
         """Generate clinical assessment from visit vitals and symptoms."""
         prompt = (

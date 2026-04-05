@@ -289,14 +289,11 @@ def build_app(spark):
             chatbot = gr.Chatbot(height=400)
 
             # ── Voice input (Sarvam Saarika ASR) ──────────────────────────
-            gr.Markdown("#### 🎤 Voice Input — Sarvam Saarika ASR")
-            with gr.Row():
-                mic_input = gr.Audio(
-                    sources=["microphone"], type="numpy",
-                    label="Record voice (click mic, speak, click stop)",
-                    scale=4,
-                )
-                voice_btn = gr.Button("Transcribe & Send 🎙️", variant="primary", scale=1)
+            gr.Markdown("#### 🎤 Voice Input — Sarvam Saarika ASR (auto-sends on stop)")
+            mic_input = gr.Audio(
+                sources=["microphone"], type="numpy",
+                label="Click mic → speak → click stop — sends automatically",
+            )
 
             # ── Text input ─────────────────────────────────────────────────
             gr.Markdown("#### ⌨️ Or type below")
@@ -313,7 +310,8 @@ def build_app(spark):
             )
 
             # ── Event handlers ─────────────────────────────────────────────
-            voice_btn.click(
+            # Auto-process when recording stops (before Gradio resets the component)
+            mic_input.stop_recording(
                 voice_chat, [mic_input, lang_select, chatbot],
                 [chatbot, tts_output],
             )
