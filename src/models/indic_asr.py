@@ -45,6 +45,10 @@ class IndicASR:
     def __init__(self):
         self._sarvam_key = _get_api_key("SARVAM_API_KEY", "sarvam-api-key")
         self._hf_key = _get_api_key("HF_TOKEN", "hf-token")
+        if not self._sarvam_key:
+            logger.warning("SARVAM_API_KEY not set — Sarvam ASR will be skipped.")
+        if not self._hf_key:
+            logger.warning("HF_TOKEN not set — HuggingFace ASR fallback unavailable.")
 
     def transcribe(self, audio_input, language: str = "hi") -> str:
         """
@@ -84,15 +88,20 @@ class IndicASR:
         return self._transcribe_hf(audio_bytes, language)
 
     def _transcribe_sarvam(self, audio_bytes: bytes, filename: str, language: str) -> str:
-        """Transcribe using Sarvam AI Saarika ASR API."""
+        """Transcribe using Sarvam AI Saaras ASR API."""
         try:
             import requests
             lang_code = _SARVAM_LANG.get(language, "hi-IN")
+            data: dict[str, str] = {
+                "model": "saaras:v3",
+                "mode": "transcribe",
+                "language_code": lang_code,
+            }
             resp = requests.post(
                 f"{SARVAM_API_BASE}/speech-to-text",
                 headers={"api-subscription-key": self._sarvam_key},
                 files={"file": (filename, audio_bytes, "audio/wav")},
-                data={"language_code": lang_code, "model": "saarika:v2.5"},
+                data=data,
                 timeout=30,
             )
             if resp.status_code == 200:
@@ -108,9 +117,9 @@ class IndicASR:
             return ""
         try:
             import requests
-            model = "ai4bharat/indicwhisper-hindi" if language == "hi" else "openai/whisper-base"
+            model = "openai/whisper-large-v3"
             resp = requests.post(
-                f"https://router.huggingface.co/models/{model}",
+                f"https://router.huggingface.co/hf-inference/models/{model}",
                 headers={"Authorization": f"Bearer {self._hf_key}"},
                 data=audio_bytes,
                 timeout=30,

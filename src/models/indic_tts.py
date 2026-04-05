@@ -83,11 +83,9 @@ class IndicTTS:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "inputs": [text[:500]],  # Sarvam max ~500 chars per request
+                    "text": text[:2500],
                     "target_language_code": lang_code,
-                    "speaker": "anushka",
-                    "model": "bulbul:v2",
-                    "enable_preprocessing": True,
+                    "model": "bulbul:v3",
                 },
                 timeout=20,
             )
