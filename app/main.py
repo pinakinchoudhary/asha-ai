@@ -292,7 +292,7 @@ def build_app(spark):
             gr.Markdown("#### 🎤 Voice Input — Sarvam Saarika ASR")
             with gr.Row():
                 mic_input = gr.Audio(
-                    source="microphone", type="numpy",
+                    sources=["microphone"], type="numpy",
                     label="Record voice (click mic, speak, click stop)",
                     scale=4,
                 )
