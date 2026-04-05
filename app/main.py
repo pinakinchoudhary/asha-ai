@@ -50,6 +50,92 @@ import gradio as gr  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Browser-side audio recorder (pure JS — no gr.Audio involved)
+# Uses Web Audio API → 16 kHz mono 16-bit PCM → WAV → base64.
+# Stores result in window.__asha_wav_b64 for the Send Voice button.
+# ---------------------------------------------------------------------------
+_RECORDER_HTML = """
+<div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+  <button id="asha-rec-btn"
+    style="padding:10px 24px;font-size:15px;border-radius:8px;border:none;
+           background:#2563eb;color:#fff;cursor:pointer;font-weight:600;"
+    onclick="window.__ashaToggleRec()">
+    Start Recording
+  </button>
+  <span id="asha-rec-status" style="font-size:14px;color:#666;">
+    Ready to record
+  </span>
+</div>
+<script>
+(function(){
+  var ctx, stream, src, proc, chunks, recording=false, sr=16000;
+  window.__asha_wav_b64 = '';
+
+  window.__ashaToggleRec = async function(){
+    var btn=document.getElementById('asha-rec-btn'),
+        st=document.getElementById('asha-rec-status');
+    if(!recording){
+      try{
+        ctx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:sr});
+        sr = ctx.sampleRate;                       // actual rate browser gave us
+        stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        src = ctx.createMediaStreamSource(stream);
+        proc = ctx.createScriptProcessor(4096,1,1);
+        chunks = [];
+        proc.onaudioprocess = function(e){
+          if(recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        };
+        src.connect(proc); proc.connect(ctx.destination);
+        recording = true;
+        btn.textContent = 'Stop Recording';
+        btn.style.background = '#dc2626';
+        st.textContent = 'Recording\u2026';
+        st.style.color = '#dc2626';
+      }catch(err){
+        st.textContent = 'Mic error: '+err.message;
+        st.style.color = '#dc2626';
+      }
+    } else {
+      recording = false;
+      proc.disconnect(); src.disconnect();
+      stream.getTracks().forEach(function(t){t.stop();});
+      // concat PCM
+      var len=0; chunks.forEach(function(c){len+=c.length;});
+      var pcm=new Float32Array(len), off=0;
+      chunks.forEach(function(c){pcm.set(c,off);off+=c.length;});
+      // float32 → int16
+      var i16=new Int16Array(pcm.length);
+      for(var i=0;i<pcm.length;i++){
+        var s=pcm[i]<-1?-1:pcm[i]>1?1:pcm[i];
+        i16[i]=s<0?s*32768:s*32767;
+      }
+      // build WAV
+      var nb=44+i16.length*2, buf=new ArrayBuffer(nb), v=new DataView(buf);
+      function ws(o,s){for(var j=0;j<s.length;j++)v.setUint8(o+j,s.charCodeAt(j));}
+      ws(0,'RIFF'); v.setUint32(4,nb-8,true); ws(8,'WAVE');
+      ws(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true);
+      v.setUint16(22,1,true); v.setUint32(24,sr,true);
+      v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+      ws(36,'data'); v.setUint32(40,i16.length*2,true);
+      for(var i=0;i<i16.length;i++) v.setInt16(44+i*2,i16[i],true);
+      // to base64
+      var bytes=new Uint8Array(buf), bin='';
+      for(var i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+      window.__asha_wav_b64 = btoa(bin);
+      var durSec=(pcm.length/sr).toFixed(1);
+      var sizeKb=(nb/1024).toFixed(0);
+      ctx.close();
+      btn.textContent='Start Recording';
+      btn.style.background='#2563eb';
+      st.textContent=durSec+'s recorded ('+sizeKb+' KB) \u2014 click Send Voice';
+      st.style.color='#16a34a';
+    }
+  };
+})();
+</script>
+"""
+
 _SECRETS_SCOPE = "asha-ai"
 _SECRET_KEYS = {
     "SARVAM_API_KEY": "sarvam-api-key",
@@ -188,20 +274,21 @@ def build_app(spark):
             history.append([message, f"**Error:** {e}"])
             return history, "", None
 
-    def voice_turn(audio_path, language, history):
-        """Handle voice input.
+    def voice_turn_b64(audio_b64_str, language, history):
+        """Handle voice input from the JS recorder.
 
-        gr.Audio(type='filepath') saves the recording to a temp file on
-        disk.  We read that file here — it is stable and does not vanish
-        when the widget resets.
+        The browser records audio via Web Audio API, encodes it as a
+        16-bit mono WAV, base64-encodes it, and stores it in a JS global.
+        The button click's js= parameter injects it here.  Gradio never
+        touches the audio — no gr.Audio component involved.
         """
         history = [list(pair) for pair in history] if history else []
-        if not audio_path:
+        if not audio_b64_str:
+            history.append(["🎤", "No audio recorded. Click Start Recording first."])
             return history, None
         try:
-            with open(audio_path, "rb") as f:
-                audio_bytes = f.read()
-            logger.info("Voice: read %d bytes from %s", len(audio_bytes), audio_path)
+            audio_bytes = base64.b64decode(audio_b64_str)
+            logger.info("Voice: decoded %d bytes from browser recording", len(audio_bytes))
             if len(audio_bytes) < 1000:
                 history.append(["🎤 (audio)", "Recording too short. Please try again."])
                 return history, None
@@ -211,12 +298,11 @@ def build_app(spark):
                 history.append(["🎤 (audio)", "Could not transcribe. Please speak clearly and try again."])
                 return history, None
             history, tts_audio = _process_text(text.strip(), lang_code, history)
-            # Replace the last user message with the mic icon prefix
             if history:
                 history[-1][0] = f"🎤 {text.strip()}"
             return history, tts_audio
         except Exception as e:
-            logger.exception("voice_turn")
+            logger.exception("voice_turn_b64")
             history.append(["🎤 (audio)", f"**Error:** {e}"])
             return history, None
 
@@ -309,12 +395,13 @@ def build_app(spark):
             lang_select = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
             chatbot = gr.Chatbot(height=400)
 
-            # ── Voice input ───────────────────────────────────────────────
-            gr.Markdown("#### 🎤 Voice Input")
-            mic_input = gr.Audio(
-                sources=["microphone"], type="filepath",
-                label="Record your question, then click Send Voice",
-            )
+            # ── Voice input (pure JS — bypasses gr.Audio entirely) ────────
+            # The browser's Web Audio API captures 16 kHz mono PCM,
+            # encodes it as a WAV, base64-encodes it, and stores it in
+            # window.__asha_wav_b64.  The Send Voice button's js=
+            # parameter injects that value into voice_turn_b64().
+            gr.HTML(_RECORDER_HTML)
+            audio_b64 = gr.Textbox(value="", visible=False)
             voice_btn = gr.Button("Send Voice", variant="primary")
 
             # ── Text input ────────────────────────────────────────────────
@@ -331,11 +418,12 @@ def build_app(spark):
                 interactive=False,
             )
 
-            # Voice: user records → clicks Send Voice → file read from disk
+            # Voice: JS recorder → base64 injected via js= → Python handler
             voice_btn.click(
-                voice_turn,
-                inputs=[mic_input, lang_select, chatbot],
+                voice_turn_b64,
+                inputs=[audio_b64, lang_select, chatbot],
                 outputs=[chatbot, tts_output],
+                js="(b64, lang, hist) => [window.__asha_wav_b64 || '', lang, hist]",
             )
             # Text: typed input
             msg_input.submit(
