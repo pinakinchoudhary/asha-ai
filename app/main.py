@@ -64,82 +64,98 @@ logger = logging.getLogger(__name__)
 _RECORDER_HEAD = """
 <script>
 (function(){
-  var ctx, stream, src, proc, chunks, recording=false, sr=16000;
-  window.__asha_wav_b64 = '';
+  /* ---- Reusable recorder factory ---- */
+  function makeRecorder(btnId, statusId, globalKey) {
+    var ctx, stream, src, proc, chunks, recording = false, sr = 16000;
+    window[globalKey] = '';
 
-  window.__ashaToggleRec = async function(){
-    var btn = document.getElementById('asha-rec-btn');
-    var st  = document.getElementById('asha-rec-status');
-    if (!btn || !st) return;
+    function toggle() {
+      var btn = document.getElementById(btnId);
+      var st  = document.getElementById(statusId);
+      if (!btn || !st) return;
 
-    if (!recording) {
-      try {
-        ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: sr});
-        sr = ctx.sampleRate;
-        stream = await navigator.mediaDevices.getUserMedia({audio: true});
-        src  = ctx.createMediaStreamSource(stream);
-        proc = ctx.createScriptProcessor(4096, 1, 1);
-        chunks = [];
-        proc.onaudioprocess = function(e){
-          if (recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-        };
-        src.connect(proc);
-        proc.connect(ctx.destination);
-        recording = true;
-        btn.textContent = 'Stop Recording';
-        btn.style.background = '#dc2626';
-        st.textContent  = 'Recording…';
-        st.style.color   = '#dc2626';
-      } catch(err) {
-        st.textContent = 'Mic error: ' + err.message;
-        st.style.color = '#dc2626';
+      if (!recording) {
+        (async function(){
+          try {
+            ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: sr});
+            sr = ctx.sampleRate;
+            stream = await navigator.mediaDevices.getUserMedia({audio: true});
+            src  = ctx.createMediaStreamSource(stream);
+            proc = ctx.createScriptProcessor(4096, 1, 1);
+            chunks = [];
+            proc.onaudioprocess = function(e){
+              if (recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+            };
+            src.connect(proc);
+            proc.connect(ctx.destination);
+            recording = true;
+            btn.textContent = 'Stop Recording';
+            btn.style.background = '#dc2626';
+            st.textContent = 'Recording\u2026';
+            st.style.color = '#dc2626';
+          } catch(err) {
+            st.textContent = 'Mic error: ' + err.message;
+            st.style.color = '#dc2626';
+          }
+        })();
+      } else {
+        recording = false;
+        if (proc) proc.disconnect();
+        if (src)  src.disconnect();
+        if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+        var len = 0;
+        chunks.forEach(function(c){ len += c.length; });
+        var pcm = new Float32Array(len), off = 0;
+        chunks.forEach(function(c){ pcm.set(c, off); off += c.length; });
+        var i16 = new Int16Array(pcm.length);
+        for (var i = 0; i < pcm.length; i++) {
+          var s = pcm[i] < -1 ? -1 : pcm[i] > 1 ? 1 : pcm[i];
+          i16[i] = s < 0 ? s * 32768 : s * 32767;
+        }
+        var nb  = 44 + i16.length * 2;
+        var buf = new ArrayBuffer(nb);
+        var v   = new DataView(buf);
+        function ws(o, s){ for (var j=0;j<s.length;j++) v.setUint8(o+j, s.charCodeAt(j)); }
+        ws(0,'RIFF'); v.setUint32(4, nb-8, true); ws(8,'WAVE');
+        ws(12,'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+        v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+        v.setUint32(28, sr*2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+        ws(36,'data'); v.setUint32(40, i16.length*2, true);
+        for (var i = 0; i < i16.length; i++) v.setInt16(44 + i*2, i16[i], true);
+        var bytes = new Uint8Array(buf), bin = '';
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        window[globalKey] = btoa(bin);
+        var durSec = (pcm.length / sr).toFixed(1);
+        var sizeKb = (nb / 1024).toFixed(0);
+        if (ctx.state !== 'closed') ctx.close();
+        btn.textContent = 'Start Recording';
+        btn.style.background = '#2563eb';
+        st.textContent = durSec + 's recorded (' + sizeKb + ' KB) \u2014 click Send Voice';
+        st.style.color = '#16a34a';
       }
-    } else {
-      recording = false;
-      if (proc) proc.disconnect();
-      if (src)  src.disconnect();
-      if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
-      var len = 0;
-      chunks.forEach(function(c){ len += c.length; });
-      var pcm = new Float32Array(len), off = 0;
-      chunks.forEach(function(c){ pcm.set(c, off); off += c.length; });
-      var i16 = new Int16Array(pcm.length);
-      for (var i = 0; i < pcm.length; i++) {
-        var s = pcm[i] < -1 ? -1 : pcm[i] > 1 ? 1 : pcm[i];
-        i16[i] = s < 0 ? s * 32768 : s * 32767;
-      }
-      var nb  = 44 + i16.length * 2;
-      var buf = new ArrayBuffer(nb);
-      var v   = new DataView(buf);
-      function ws(o, s){ for (var j=0;j<s.length;j++) v.setUint8(o+j, s.charCodeAt(j)); }
-      ws(0,'RIFF'); v.setUint32(4, nb-8, true); ws(8,'WAVE');
-      ws(12,'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
-      v.setUint16(22, 1, true); v.setUint32(24, sr, true);
-      v.setUint32(28, sr*2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-      ws(36,'data'); v.setUint32(40, i16.length*2, true);
-      for (var i = 0; i < i16.length; i++) v.setInt16(44 + i*2, i16[i], true);
-      var bytes = new Uint8Array(buf), bin = '';
-      for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      window.__asha_wav_b64 = btoa(bin);
-      var durSec = (pcm.length / sr).toFixed(1);
-      var sizeKb = (nb / 1024).toFixed(0);
-      if (ctx.state !== 'closed') ctx.close();
-      btn.textContent = 'Start Recording';
-      btn.style.background = '#2563eb';
-      st.textContent = durSec + 's recorded (' + sizeKb + ' KB) — click Send Voice';
-      st.style.color = '#16a34a';
     }
-  };
-
-  /* Attach click handler once the button exists in the DOM */
-  function attach(){
-    var btn = document.getElementById('asha-rec-btn');
-    if (btn && !btn._asha) {
-      btn._asha = true;
-      btn.addEventListener('click', window.__ashaToggleRec);
-    }
+    return toggle;
   }
-  var iv = setInterval(function(){ attach(); }, 300);
+
+  /* Create one recorder per tab */
+  window.__ashaToggleRec     = makeRecorder('asha-rec-btn',      'asha-rec-status',      '__asha_wav_b64');
+  window.__ashaCrudToggleRec = makeRecorder('asha-crud-rec-btn', 'asha-crud-rec-status', '__asha_crud_wav_b64');
+
+  /* Attach click handlers once buttons exist in the DOM */
+  function attach(){
+    var pairs = [
+      ['asha-rec-btn',      window.__ashaToggleRec],
+      ['asha-crud-rec-btn', window.__ashaCrudToggleRec],
+    ];
+    pairs.forEach(function(p){
+      var btn = document.getElementById(p[0]);
+      if (btn && !btn._asha) {
+        btn._asha = true;
+        btn.addEventListener('click', p[1]);
+      }
+    });
+  }
+  setInterval(attach, 300);
   document.addEventListener('DOMContentLoaded', attach);
   if (typeof MutationObserver !== 'undefined') {
     new MutationObserver(attach).observe(document.body || document.documentElement,
@@ -157,6 +173,19 @@ _RECORDER_UI = (
     '    Start Recording'
     '  </button>'
     '  <span id="asha-rec-status" style="font-size:14px;color:#666;">'
+    '    Ready to record'
+    '  </span>'
+    '</div>'
+)
+
+_CRUD_RECORDER_UI = (
+    '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;">'
+    '  <button id="asha-crud-rec-btn"'
+    '    style="padding:10px 24px;font-size:15px;border-radius:8px;border:none;'
+    '           background:#2563eb;color:#fff;cursor:pointer;font-weight:600;">'
+    '    Start Recording'
+    '  </button>'
+    '  <span id="asha-crud-rec-status" style="font-size:14px;color:#666;">'
     '    Ready to record'
     '  </span>'
     '</div>'
@@ -334,7 +363,8 @@ def build_app(spark):
 
     # ─────────────────────────────────────────────────────────────────────────
 
-    def add_patient_voice(command, language):
+    def _run_crud_command(command, language):
+        """Run a CRUD command string and return formatted markdown."""
         lang_code = "hi" if language == "Hindi" else "en"
         result = voice_db.process_voice_command(command, language=lang_code)
         output = f"**Intent**: {result.get('intent', 'unknown')}\n"
@@ -346,6 +376,29 @@ def build_app(spark):
         else:
             output += f"**Error**: {result.get('message_en', 'Unknown error')}"
         return output
+
+    def add_patient_text(command, language):
+        if not command or not command.strip():
+            return "Please enter a command."
+        return _run_crud_command(command.strip(), language)
+
+    def add_patient_voice_b64(audio_b64_str, language):
+        """CRUD via voice: transcribe then run command."""
+        if not audio_b64_str:
+            return "No audio recorded. Click Start Recording first."
+        try:
+            audio_bytes = base64.b64decode(audio_b64_str)
+            logger.info("CRUD voice: decoded %d bytes", len(audio_bytes))
+            if len(audio_bytes) < 1000:
+                return "Recording too short. Please try again."
+            lang_code = "hi" if language == "Hindi" else "en"
+            text = asr.transcribe(audio_bytes, lang_code)
+            if not text or not text.strip():
+                return "Could not transcribe. Please speak clearly and try again."
+            return f"**Transcribed**: {text}\n\n---\n\n" + _run_crud_command(text.strip(), language)
+        except Exception as e:
+            logger.exception("add_patient_voice_b64")
+            return f"**Error:** {e}"
 
     def get_recent_patients():
         if not spark:
@@ -476,11 +529,30 @@ def build_app(spark):
         with gr.Tab("Patient CRUD"):
             gr.Markdown("### Add/Update Patients via Natural Language")
             crud_lang = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
-            crud_input = gr.Textbox(label="Voice Command", lines=2,
+
+            # Voice input for CRUD
+            gr.Markdown("#### Voice Command")
+            gr.HTML(_CRUD_RECORDER_UI)
+            crud_audio_b64 = gr.Textbox(value="", visible=False)
+            crud_voice_btn = gr.Button("Send Voice", variant="primary")
+
+            # Text input for CRUD
+            gr.Markdown("#### Or type below")
+            crud_input = gr.Textbox(label="Text Command", lines=2,
                 placeholder="e.g., 'Naya patient register karo — Meena Kumari, umra 22, gaon Sultanpur'")
-            crud_btn = gr.Button("Process Command", variant="primary")
+            crud_btn = gr.Button("Process Command", variant="secondary")
+
             crud_output = gr.Markdown()
-            crud_btn.click(add_patient_voice, [crud_input, crud_lang], crud_output)
+
+            crud_voice_btn.click(
+                add_patient_voice_b64,
+                inputs=[crud_audio_b64, crud_lang],
+                outputs=[crud_output],
+                js="(b64, lang) => [window.__asha_crud_wav_b64 || '', lang]",
+            )
+            crud_btn.click(add_patient_text, [crud_input, crud_lang], crud_output)
+            crud_input.submit(add_patient_text, [crud_input, crud_lang], crud_output)
+
             gr.Markdown("### Recent Patients")
             patients_table = gr.Dataframe(value=get_recent_patients, every=30)
 
