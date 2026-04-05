@@ -24,9 +24,6 @@ for _p in [str(_ROOT), str(_ROOT / "src")]:
         sys.path.insert(0, _p)
 
 # ── Monkey-patch gradio_client 1.3.0 schema bug ─────────────────────────────
-# gr.Chatbot produces additionalProperties=True (a bool, not a schema dict).
-# gradio_client.utils._json_schema_to_python_type recurses into it and crashes.
-# Patch before importing gradio so the fix is in place for all subsequent calls.
 import gradio_client.utils as _gc_utils  # noqa: E402
 
 _orig_inner = _gc_utils._json_schema_to_python_type
@@ -64,17 +61,12 @@ _SECRET_KEYS = {
 # ── Secret loading ────────────────────────────────────────────────────────────
 
 def _load_secrets() -> None:
-    """Load API keys from Databricks secret scope into env vars.
-
-    Uses databricks-sdk OAuth M2M — no PAT needed inside a Databricks App.
-    SDK get_secret() returns base64-encoded values; we decode before use.
-    """
     try:
         from databricks.sdk import WorkspaceClient
         w = WorkspaceClient()
         for env_var, secret_key in _SECRET_KEYS.items():
             if os.environ.get(env_var, "").strip():
-                continue  # already set (e.g. local .env)
+                continue
             try:
                 val = w.secrets.get_secret(scope=_SECRETS_SCOPE, key=secret_key)
                 if val and val.value:
@@ -93,10 +85,6 @@ def _load_secrets() -> None:
 # ── Spark via databricks-connect ──────────────────────────────────────────────
 
 def _get_spark():
-    """Return a SparkSession via databricks-connect (serverless).
-
-    Returns None if unavailable — Spark-dependent features will be disabled.
-    """
     try:
         from databricks.connect import DatabricksSession
         spark = DatabricksSession.builder.serverless(True).getOrCreate()
@@ -165,7 +153,7 @@ def build_app(spark):
         except Exception:
             return None
 
-    # ── Tab handlers ────────────────────────────────────────────────────────
+    # ── Tab handlers ─────────────────────────────────────────────────────────
 
     def copilot_chat(message, language, history):
         """Process text message → pipeline → chatbot + TTS audio."""
@@ -189,9 +177,24 @@ def build_app(spark):
         tts_audio = _wav_bytes_to_numpy(response.audio_bytes)
         return history, "", tts_audio
 
+    # ── FIX: capture audio into State first, then process ────────────────────
+    #
+    # Root cause: Gradio resets gr.Audio to None immediately after stop_recording
+    # fires (for UX — so the widget is ready for the next recording). If the
+    # server hasn't read mic_input yet, it sees the cleared (empty) value.
+    #
+    # Fix: chain two events —
+    #   1. _capture_audio  →  runs instantly at stop time, saves audio to State
+    #   2. voice_chat      →  reads from State (never None) + clears State after
+    #
+    def _capture_audio(audio_tuple):
+        """Step 1: snapshot the audio into State before Gradio resets the widget."""
+        return audio_tuple  # just pass it through to gr.State
+
     def voice_chat(audio_tuple, language, history):
-        """Transcribe microphone audio (Sarvam Saarika) then process through pipeline."""
+        """Step 2: transcribe from State → pipeline → chatbot + TTS."""
         if audio_tuple is None:
+            # State was never set (e.g. user clicked stop without recording)
             return history, None
         lang_code = "hi" if language == "Hindi" else "en"
         text = asr.transcribe_from_gradio(audio_tuple, lang_code)
@@ -200,6 +203,12 @@ def build_app(spark):
             return history, None
         new_history, _, tts_audio = copilot_chat(text, language, history)
         return new_history, tts_audio
+
+    def _clear_audio_state():
+        """Step 3: reset State after processing so stale audio isn't reused."""
+        return None
+
+    # ─────────────────────────────────────────────────────────────────────────
 
     def add_patient_voice(command, language):
         lang_code = "hi" if language == "Hindi" else "en"
@@ -277,7 +286,7 @@ def build_app(spark):
             out += f"**Sources**: {', '.join(result['sources'])}"
         return out
 
-    # ── UI ──────────────────────────────────────────────────────────────────
+    # ── UI ───────────────────────────────────────────────────────────────────
 
     with gr.Blocks(theme=gr.themes.Soft(), title="ASHA Copilot") as demo:
         gr.Markdown("# ASHA Copilot — AI-Powered Maternal & Child Healthcare Assistant")
@@ -288,14 +297,18 @@ def build_app(spark):
             lang_select = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
             chatbot = gr.Chatbot(height=400)
 
-            # ── Voice input (Sarvam Saarika ASR) ──────────────────────────
+            # State that holds the recorded audio snapshot — survives the
+            # gr.Audio widget reset that causes the empty-audio bug.
+            audio_state = gr.State(None)
+
+            # ── Voice input ───────────────────────────────────────────────
             gr.Markdown("#### 🎤 Voice Input — Sarvam Saarika ASR (auto-sends on stop)")
             mic_input = gr.Audio(
                 sources=["microphone"], type="numpy",
                 label="Click mic → speak → click stop — sends automatically",
             )
 
-            # ── Text input ─────────────────────────────────────────────────
+            # ── Text input ────────────────────────────────────────────────
             gr.Markdown("#### ⌨️ Or type below")
             with gr.Row():
                 msg_input = gr.Textbox(
@@ -303,18 +316,40 @@ def build_app(spark):
                 )
                 send_btn = gr.Button("Send", variant="secondary", scale=1)
 
-            # ── TTS audio output (Sarvam Bulbul) ───────────────────────────
+            # ── TTS audio output ──────────────────────────────────────────
             tts_output = gr.Audio(
                 label="🔊 Response Audio — Sarvam Bulbul TTS", autoplay=False,
                 interactive=False,
             )
 
-            # ── Event handlers ─────────────────────────────────────────────
-            # Auto-process when recording stops (before Gradio resets the component)
-            mic_input.stop_recording(
-                voice_chat, [mic_input, lang_select, chatbot],
-                [chatbot, tts_output],
+            # ── Event chain (THE FIX) ─────────────────────────────────────
+            #
+            # stop_recording fires with the audio value at that instant.
+            # Step 1: immediately snapshot it into audio_state.
+            # Step 2: .then() chains off step 1 — reads from audio_state,
+            #         which is already frozen and won't be cleared by the
+            #         widget reset happening in parallel.
+            # Step 3: clear audio_state so a future empty stop doesn't
+            #         accidentally replay the previous recording.
+            #
+            (
+                mic_input.stop_recording(
+                    _capture_audio,
+                    inputs=[mic_input],
+                    outputs=[audio_state],
+                )
+                .then(
+                    voice_chat,
+                    inputs=[audio_state, lang_select, chatbot],
+                    outputs=[chatbot, tts_output],
+                )
+                .then(
+                    _clear_audio_state,
+                    inputs=[],
+                    outputs=[audio_state],
+                )
             )
+
             msg_input.submit(
                 copilot_chat, [msg_input, lang_select, chatbot],
                 [chatbot, msg_input, tts_output],
@@ -385,7 +420,7 @@ def build_app(spark):
     return demo
 
 
-# ── Entry point ────────────────────────────────────────────────────────────
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
@@ -393,9 +428,6 @@ def main() -> None:
     spark = _get_spark()
     demo = build_app(spark)
     demo.queue()
-    # Bare launch() — Databricks Apps injects GRADIO_SERVER_NAME, GRADIO_SERVER_PORT,
-    # GRADIO_ROOT_PATH via environment variables. Do NOT pass share=, server_name=,
-    # server_port=, or root_path= here.
     demo.launch()
 
 
