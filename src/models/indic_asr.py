@@ -124,8 +124,11 @@ class IndicASR:
 
     def transcribe_from_gradio(self, audio_tuple, language: str = "hi") -> str:
         """
-        Handle Gradio audio widget output.
-        Gradio returns (sample_rate, numpy_array) tuple.
+        Convert Gradio microphone output → WAV bytes → transcribe.
+
+        Gradio returns (sample_rate: int, audio: np.ndarray).
+        The array dtype can be int16, int32, float32, or float64.
+        Shape can be (N,) mono or (N, channels) stereo.
         """
         if audio_tuple is None:
             return ""
@@ -135,13 +138,40 @@ class IndicASR:
             import wave
 
             sr, audio_np = audio_tuple
+
+            if audio_np is None or audio_np.size == 0:
+                logger.warning("ASR: received empty audio array from Gradio.")
+                return ""
+
+            # Stereo → mono
+            if audio_np.ndim == 2:
+                audio_np = audio_np.mean(axis=1)
+
+            # Normalise to int16 PCM regardless of incoming dtype
+            if audio_np.dtype == np.int16:
+                audio_int16 = audio_np
+            elif audio_np.dtype == np.int32:
+                audio_int16 = (audio_np >> 16).astype(np.int16)
+            else:
+                # float32 / float64: values are in [-1.0, 1.0]
+                audio_float = audio_np.astype(np.float32)
+                audio_float = np.clip(audio_float, -1.0, 1.0)
+                audio_int16 = (audio_float * 32767).astype(np.int16)
+
+            # Minimum length check (~0.1 s)
+            if len(audio_int16) < sr * 0.1:
+                logger.warning("ASR: audio too short to transcribe.")
+                return ""
+
             buf = io.BytesIO()
             with wave.open(buf, "wb") as wf:
                 wf.setnchannels(1)
-                wf.setsampwidth(2)
+                wf.setsampwidth(2)   # 16-bit = 2 bytes
                 wf.setframerate(sr)
-                wf.writeframes((audio_np * 32767).astype(np.int16).tobytes())
-            return self.transcribe(buf.getvalue(), language)
+                wf.writeframes(audio_int16.tobytes())
+            wav_bytes = buf.getvalue()
+            logger.info(f"ASR: sending {len(wav_bytes)} bytes, {len(audio_int16)/sr:.1f}s, sr={sr}")
+            return self.transcribe(wav_bytes, language)
         except Exception as e:
             logger.warning(f"Gradio audio processing failed: {e}")
             return ""
