@@ -90,6 +90,8 @@ class VoicePipeline:
         # Step 4: Route to appropriate engine
         if intent in ("add_patient", "update_record", "log_visit"):
             response = self._handle_crud(text_local, text_en, language, intent, response)
+        elif intent == "query_patient":
+            response = self._handle_query_patient(text_local, language, response)
         elif intent == "symptom_report":
             response = self._handle_symptom(text_local, text_en, language, patient_context, response)
         elif intent == "scheme_query":
@@ -119,6 +121,15 @@ class VoicePipeline:
     # ------------------------------------------------------------------
     # Intent handlers
     # ------------------------------------------------------------------
+
+    def _handle_query_patient(self, text_local, language, response):
+        """Handle query_patient intent — look up patients in DB."""
+        if self.voice_db_agent:
+            result = self.voice_db_agent.process_voice_command(text_local, language)
+            response.db_changes = result
+            response.text_response_en = result.get("message_en", "")
+            response.text_response_local = result.get("message_hi", "")
+        return response
 
     def _handle_crud(self, text_local, text_en, language, intent, response):
         """Handle add/update/log_visit intents."""

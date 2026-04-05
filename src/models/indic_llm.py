@@ -133,21 +133,24 @@ class IndicLLM:
         prompt = (
             "You are a healthcare assistant classifier. Classify the following input "
             "into exactly ONE of these intents:\n"
-            "- symptom_report: Patient is reporting symptoms or health complaints\n"
-            "- add_patient: Registering a new patient\n"
-            "- update_record: Updating an existing patient's record or vitals\n"
-            "- log_visit: Recording a home visit with vitals and observations\n"
-            "- scheme_query: Asking about government welfare schemes or eligibility\n"
+            "- add_patient: Registering or adding a brand new patient record\n"
+            "- log_visit: Recording a home visit with vitals/measurements (BP, Hb, weight, temp)\n"
+            "- update_record: Updating an existing patient's personal details\n"
+            "- symptom_report: Patient reporting symptoms, complaints, or danger signs\n"
+            "- query_patient: Finding, showing, listing, or asking about existing patient info "
+            "(e.g. 'show all patients', 'list patients', 'what is X village', 'find patient X', "
+            "'mujhe patients dikhao', 'ka gaanv konsa hai')\n"
+            "- scheme_query: Asking about government welfare scheme eligibility\n"
             "- immunization_check: Asking about vaccination schedule or status\n"
-            "- protocol_question: Asking about clinical protocols or guidelines\n\n"
+            "- protocol_question: Asking about clinical protocols or medical guidelines\n\n"
             f"Input: {text}\n\n"
-            "Respond with ONLY the intent name (one word):\nIntent:"
+            "Respond with ONLY the intent name (no explanation):\nIntent:"
         )
         result = self.generate(prompt, max_tokens=20, temperature=0.1)
         result = result.strip().lower().replace('"', '').replace("'", "").split()[0] if result.strip() else ""
         valid_intents = [
-            "symptom_report", "add_patient", "update_record", "log_visit",
-            "scheme_query", "immunization_check", "protocol_question",
+            "add_patient", "log_visit", "update_record", "symptom_report",
+            "query_patient", "scheme_query", "immunization_check", "protocol_question",
         ]
         for intent in valid_intents:
             if intent in result:

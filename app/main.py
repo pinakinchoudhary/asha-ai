@@ -147,9 +147,30 @@ def build_app(spark):
     )
     logger.info("All components loaded.")
 
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def _wav_bytes_to_numpy(audio_bytes: bytes):
+        """Convert WAV bytes → (sample_rate, np.ndarray) for gr.Audio output."""
+        if not audio_bytes:
+            return None
+        try:
+            import io, wave
+            import numpy as np
+            buf = io.BytesIO(audio_bytes)
+            with wave.open(buf, "rb") as wf:
+                sr = wf.getframerate()
+                frames = wf.readframes(wf.getnframes())
+                arr = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32767.0
+            return (sr, arr)
+        except Exception:
+            return None
+
     # ── Tab handlers ────────────────────────────────────────────────────────
 
     def copilot_chat(message, language, history):
+        """Process text message → pipeline → chatbot + TTS audio."""
+        if not message or not message.strip():
+            return history, "", None
         lang_code = "hi" if language == "Hindi" else "en"
         response = pipeline.process(message, language=lang_code)
         reply = response.text_response_local if lang_code == "hi" else response.text_response_en
@@ -165,7 +186,20 @@ def build_app(spark):
         if response.db_changes and response.db_changes.get("success"):
             extras.append(f"\n**DB Update**: {response.db_changes.get('db_action', '')}")
         history.append((message, reply + "".join(extras)))
-        return history, ""
+        tts_audio = _wav_bytes_to_numpy(response.audio_bytes)
+        return history, "", tts_audio
+
+    def voice_chat(audio_tuple, language, history):
+        """Transcribe microphone audio (Sarvam Saarika) then process through pipeline."""
+        if audio_tuple is None:
+            return history, None, None
+        lang_code = "hi" if language == "Hindi" else "en"
+        text = asr.transcribe_from_gradio(audio_tuple, lang_code)
+        if not text or not text.strip():
+            history.append(("🎤 (audio)", "Could not transcribe. Please speak clearly and try again."))
+            return history, None, None
+        new_history, _, tts_audio = copilot_chat(text, language, history)
+        return new_history, None, tts_audio
 
     def add_patient_voice(command, language):
         lang_code = "hi" if language == "Hindi" else "en"
@@ -253,10 +287,49 @@ def build_app(spark):
             gr.Markdown("### Chat with ASHA Copilot in Hindi or English")
             lang_select = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
             chatbot = gr.Chatbot(height=400)
-            msg_input = gr.Textbox(placeholder="Type ASHA's input here...", label="ASHA Input")
-            msg_input.submit(copilot_chat, [msg_input, lang_select, chatbot], [chatbot, msg_input])
+
+            # ── Voice input (Sarvam Saarika ASR) ──────────────────────────
+            gr.Markdown("#### 🎤 Voice Input — Sarvam Saarika ASR")
+            with gr.Row():
+                mic_input = gr.Audio(
+                    source="microphone", type="numpy",
+                    label="Record voice (click mic, speak, click stop)",
+                    scale=4,
+                )
+                voice_btn = gr.Button("Transcribe & Send 🎙️", variant="primary", scale=1)
+
+            # ── Text input ─────────────────────────────────────────────────
+            gr.Markdown("#### ⌨️ Or type below")
+            with gr.Row():
+                msg_input = gr.Textbox(
+                    placeholder="Type ASHA's input here...", label="Text Input", scale=8
+                )
+                send_btn = gr.Button("Send", variant="secondary", scale=1)
+
+            # ── TTS audio output (Sarvam Bulbul) ───────────────────────────
+            tts_output = gr.Audio(
+                label="🔊 Response Audio — Sarvam Bulbul TTS", autoplay=False,
+                interactive=False,
+            )
+
+            # ── Event handlers ─────────────────────────────────────────────
+            voice_btn.click(
+                voice_chat, [mic_input, lang_select, chatbot],
+                [chatbot, mic_input, tts_output],
+            )
+            msg_input.submit(
+                copilot_chat, [msg_input, lang_select, chatbot],
+                [chatbot, msg_input, tts_output],
+            )
+            send_btn.click(
+                copilot_chat, [msg_input, lang_select, chatbot],
+                [chatbot, msg_input, tts_output],
+            )
+
             gr.Examples(
                 examples=[
+                    ["Mujhe sab patients dikhao"],
+                    ["Meena Kumari ka gaanv konsa hai?"],
                     ["Patient ko kal raat se severe headache aur chakkar aa raha hai. BP 160/100 tha."],
                     ["Naya patient register karo — Geeta Devi, umra 26, gaon Sarnath, BPL hai"],
                     ["Sunita Devi PMMVY scheme ke liye eligible hai kya?"],

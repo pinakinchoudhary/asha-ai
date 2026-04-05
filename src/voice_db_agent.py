@@ -73,6 +73,8 @@ class VoiceDBAgent:
             return self._add_patient(entities, text, text_en)
         elif intent in ("log_visit", "update_record", "symptom_report"):
             return self._log_visit(entities, text, text_en)
+        elif intent == "query_patient":
+            return self._query_patients(entities, text, text_en)
         else:
             return {
                 "success": True, "intent": intent, "entities": entities,
@@ -248,10 +250,53 @@ class VoiceDBAgent:
             logger.warning(f"Patient lookup failed: {e}")
         return None
 
+    def _query_patients(self, entities: dict, original: str, translated: str) -> dict:
+        """Query patient records — find by name or list all."""
+        if not self.spark:
+            return self._error("Database not available.")
+
+        name = entities.get("patient_name") or entities.get("name", "")
+        try:
+            if name and name.lower() not in ("all", "sab", "sabhi", "everyone"):
+                first = name.lower().split()[0]
+                rows = self.spark.sql(f"""
+                    SELECT name, age, village, bpl_status, nearest_phc_id, registered_date
+                    FROM workspace.asha_copilot.patients
+                    WHERE lower(name) LIKE '%{first}%'
+                    LIMIT 5
+                """).collect()
+            else:
+                rows = self.spark.sql("""
+                    SELECT name, age, village, bpl_status, nearest_phc_id, registered_date
+                    FROM workspace.asha_copilot.patients
+                    ORDER BY registered_date DESC LIMIT 10
+                """).collect()
+
+            if not rows:
+                msg_en = "No patients found matching that name."
+                msg_hi = "Yeh naam ka koi patient nahi mila."
+            else:
+                lines = [
+                    f"- {r['name']} (umra {r['age']}, gaon {r['village']}, PHC {r['nearest_phc_id']})"
+                    for r in rows
+                ]
+                msg_en = f"{len(rows)} patient(s) found:\n" + "\n".join(lines)
+                msg_hi = f"{len(rows)} patient(s) mile:\n" + "\n".join(lines)
+
+            return {
+                "success": True, "intent": "query_patient", "entities": entities,
+                "db_action": "SELECT patients", "message_en": msg_en, "message_hi": msg_hi,
+                "original_text": original, "translated_text": translated,
+            }
+        except Exception as e:
+            return self._error(f"Patient query failed: {e}")
+
     def _validate_entities(self, entities: dict, intent: str) -> tuple:
         """Validate extracted entities before DB write."""
         errors = []
-        if intent == "add_patient":
+        if intent in ("query_patient",):
+            pass  # no required fields — handled in _query_patients
+        elif intent == "add_patient":
             if not entities.get("name"):
                 errors.append("Patient name is required / Naam zaroori hai")
         elif intent in ("log_visit", "update_record", "symptom_report"):
