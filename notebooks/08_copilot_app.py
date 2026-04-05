@@ -12,7 +12,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install faiss-cpu sentence-transformers PyPDF2 gradio gtts pyyaml requests
+# MAGIC %pip install faiss-cpu sentence-transformers PyPDF2 "gradio~=4.44.0" "gradio-client==1.3.0" "huggingface-hub~=0.35.3" gtts pyyaml requests
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -89,6 +89,26 @@ print("\nAll components loaded. Starting Gradio app...")
 # COMMAND ----------
 
 import gradio as gr
+
+# Monkey-patch gradio_client 1.3.0 schema bug:
+# gr.Chatbot produces additionalProperties=True (bool) which crashes get_api_info().
+import gradio_client.utils as _gc_utils
+_orig_inner = _gc_utils._json_schema_to_python_type
+_orig_get_type = _gc_utils.get_type
+
+def _safe_inner(schema, defs=None):
+    if not isinstance(schema, dict):
+        return "Any"
+    return _orig_inner(schema, defs)
+
+def _safe_get_type(schema):
+    if not isinstance(schema, dict):
+        return "Any"
+    return _orig_get_type(schema)
+
+_gc_utils._json_schema_to_python_type = _safe_inner
+_gc_utils.get_type = _safe_get_type
+
 import json
 import uuid
 from datetime import date
@@ -313,4 +333,5 @@ with gr.Blocks(
 
 # COMMAND ----------
 
-app.launch()
+app.queue()
+app.launch(share=True)
