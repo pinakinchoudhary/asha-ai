@@ -465,12 +465,12 @@ def build_app(spark):
 
     # ── UI ───────────────────────────────────────────────────────────────────
 
-    with gr.Blocks(theme=gr.themes.Soft(), title="ASHA Copilot", head=_RECORDER_HEAD) as demo:
-        gr.Markdown("# ASHA Copilot — AI-Powered Maternal & Child Healthcare Assistant")
+    with gr.Blocks(theme=gr.themes.Soft(), title="Asha AI", head=_RECORDER_HEAD) as demo:
+        gr.Markdown("# Asha AI — AI-Powered Maternal & Child Healthcare Assistant")
         gr.Markdown("Voice-first, multilingual field assistant for India's community health workers")
 
         with gr.Tab("Voice Copilot"):
-            gr.Markdown("### Chat with ASHA Copilot in Hindi or English")
+            gr.Markdown("### Chat with Asha AI in Hindi or English")
             lang_select = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
             chatbot = gr.Chatbot(height=400)
 
@@ -487,7 +487,7 @@ def build_app(spark):
             gr.Markdown("#### Or type below")
             with gr.Row():
                 msg_input = gr.Textbox(
-                    placeholder="Type ASHA's input here...", label="Text Input", scale=8
+                    placeholder="Type your input here...", label="Text Input", scale=8
                 )
                 send_btn = gr.Button("Send", variant="secondary", scale=1)
 

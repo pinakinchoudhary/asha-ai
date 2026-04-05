@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 08 — ASHA Copilot App
+# MAGIC # 08 — Asha AI App
 # MAGIC Full interactive Gradio application — the main demo notebook.
 # MAGIC
 # MAGIC **Tabs:**
@@ -245,19 +245,19 @@ def ask_protocol(question):
 # ---- Build Gradio App ----
 
 with gr.Blocks(
-    title="ASHA Copilot",
+    title="Asha AI",
     theme=gr.themes.Soft(),
 ) as app:
-    gr.Markdown("# ASHA Copilot — AI-Powered Maternal & Child Healthcare Assistant")
+    gr.Markdown("# Asha AI — AI-Powered Maternal & Child Healthcare Assistant")
     gr.Markdown("Voice-first, multilingual field assistant for India's community health workers")
 
     with gr.Tab("Voice Copilot"):
-        gr.Markdown("### Chat with ASHA Copilot in Hindi or English")
+        gr.Markdown("### Chat with Asha AI in Hindi or English")
         lang_select = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
         chatbot = gr.Chatbot(height=400)
         msg_input = gr.Textbox(
-            placeholder="Type or paste ASHA's voice input here...",
-            label="ASHA Input"
+            placeholder="Type or paste voice input here...",
+            label="Voice Input"
         )
         msg_input.submit(copilot_chat, [msg_input, lang_select, chatbot], [chatbot, msg_input])
 

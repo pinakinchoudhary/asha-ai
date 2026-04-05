@@ -1,160 +1,179 @@
-# ASHA Copilot
+# Asha AI
 
 **AI-Powered Maternal & Child Healthcare Assistant for India's Community Health Workers**
 
-ASHA Copilot is a voice-first, multilingual field assistant built on the Databricks Lakehouse platform. It supports India's 1 million+ Accredited Social Health Activists (ASHAs) with clinical triage, NHM protocol guidance, welfare scheme discovery, immunization tracking, and voice-driven patient record management — all running on CPU with quantized open-source Indic AI models.
+Asha AI is a voice-first, multilingual field assistant built on the Databricks Lakehouse platform. It supports India's 1 million+ Accredited Social Health Activists (ASHAs) with clinical triage, NHM protocol guidance, welfare scheme discovery, immunization tracking, and voice-driven patient record management — all running on CPU with open-source Indic AI models and Sarvam AI APIs.
 
 > *"If your solution only works on an A100, it does not work in India."*
+
+---
+
+## Project Write-Up
+
+> Asha AI is a voice-first, multilingual AI copilot on Databricks that empowers India's 1M+ ASHA community health workers with clinical triage (ML + safety rules), NHM protocol RAG, welfare scheme eligibility (PMMVY/JSY/JSSK), immunization tracking, and voice-driven patient CRUD — all via Hindi speech, running on CPU with Delta Lake, FAISS, Sarvam AI APIs, and open-source Indic models, designed for offline-capable, low-resource field deployment.
 
 ---
 
 ## Architecture
 
 ```
-                        ┌─────────────────────────────┐
-                        │     ASHA Worker (Mobile)     │
-                        │   Hindi / English Voice      │
-                        └──────────┬──────────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │   IndicWhisper ASR (API)     │
-                    │   Speech → Hindi Text        │
-                    └──────────────┬──────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │   IndicTrans2 (ONNX/API)     │
-                    │   Hindi → English             │
-                    └──────────────┬──────────────┘
-                                   │
-              ┌────────────────────▼────────────────────┐
-              │         Intent Classification            │
-              │    Airavata / Param-1 (GGUF on CPU)     │
-              └──┬──────┬──────┬──────┬──────┬─────────┘
-                 │      │      │      │      │
-         ┌───▼──┐ ┌──▼───┐ ┌──▼──┐ ┌──▼──┐ ┌─▼────┐
-         │Triage│ │ CRUD │ │Scheme│ │ RAG │ │ Imm. │
-         │Engine│ │Agent │ │Check │ │ Q&A │ │Track │
-         └──┬───┘ └──┬───┘ └──┬──┘ └──┬──┘ └──┬───┘
-            │        │        │       │        │
-            └────────┴────────┴───┬───┴────────┘
-                                  │
-                    ┌─────────────▼─────────────┐
-                    │  Delta Lake (hive_metastore) │
-                    │  patients | visits | doctors │
-                    │  immunizations | triage_alerts│
-                    └─────────────┬─────────────┘
-                                  │
-                    ┌─────────────▼─────────────┐
-                    │   IndicTrans2 (en → hi)    │
-                    │   gTTS / Sarvam TTS        │
-                    │   Response → Hindi Audio    │
-                    └─────────────┬─────────────┘
-                                  │
-                    ┌─────────────▼─────────────┐
-                    │   Supervisor Dashboard      │
-                    │   Gradio (Plotly charts)    │
-                    └─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                        ASHA Worker (Mobile)                         │
+│                     Hindi / English Voice Input                      │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     PRESENTATION LAYER                               │
+│   Gradio UI (Databricks Apps / In-Notebook)                         │
+│   ├── Voice Copilot       ├── Triage        ├── Protocol Q&A       │
+│   ├── Patient CRUD        ├── Scheme Checker └── Supervisor Dashboard│
+│   Web Audio API (16 kHz mono WAV, browser-side JS recording)        │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     SPEECH & LANGUAGE LAYER                           │
+│   ┌─────────────────┐  ┌──────────────────┐  ┌─────────────────┐   │
+│   │ Sarvam Saarika   │  │ Sarvam Mayura    │  │ Sarvam Bulbul   │   │
+│   │ ASR (STT)        │  │ Translation      │  │ TTS             │   │
+│   │ Hindi Speech →   │  │ Hindi ↔ English  │  │ Text → Hindi    │   │
+│   │ Hindi Text       │  │ Bidirectional    │  │ Audio           │   │
+│   └─────────────────┘  └──────────────────┘  └─────────────────┘   │
+│   Fallbacks: HF IndicWhisper | HF IndicTrans2 | gTTS               │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     INTELLIGENCE LAYER                                │
+│   ┌─────────────────────────────────────────────────────────────┐   │
+│   │  LLM: Groq Llama 3.3 70B / Sarvam-m (30B multilingual)    │   │
+│   │  Intent Classification → Route to Appropriate Engine        │   │
+│   └──┬──────────┬──────────┬──────────┬──────────┬──────────┘      │
+│   ┌──▼───┐  ┌──▼───┐  ┌──▼───┐  ┌──▼───┐  ┌──▼────────┐         │
+│   │Triage│  │Voice │  │Scheme│  │ RAG  │  │Immuniz.  │         │
+│   │Engine│  │CRUD  │  │Check │  │ Q&A  │  │Tracker   │         │
+│   │ML +  │  │Entity│  │ML +  │  │FAISS │  │Rule-based│         │
+│   │Rules │  │Extr. │  │Rules │  │+LLM  │  │+ Delta   │         │
+│   └──────┘  └──────┘  └──────┘  └──────┘  └──────────┘         │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     DATA LAYER (Databricks Lakehouse)                │
+│                                                                      │
+│   Unity Catalog: workspace.asha_copilot                              │
+│   ┌────────────┬────────────┬──────────────┬──────────────────┐     │
+│   │ patients   │ visits     │ immunizations│ triage_alerts    │     │
+│   │ doctors    │ phc_facil. │ scheme_apps  │                  │     │
+│   └────────────┴────────────┴──────────────┴──────────────────┘     │
+│   Delta Lake (ACID, time-travel) │ FAISS Vector Index (CPU)         │
+│   Databricks Secret Scopes      │ DBFS (protocol PDFs)             │
+└──────────────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                     ANALYTICS LAYER                                   │
+│   Supervisor Dashboard (Gradio + Plotly)                             │
+│   ├── Risk Distribution (pie)    ├── Village Heatmap (stacked bar)  │
+│   ├── Immunization Coverage      ├── High-Risk Patient Table        │
+│   └── ASHA Activity Metrics (KPI cards)                              │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Databricks Technologies Used
+
+| Technology | Usage |
+|-----------|-------|
+| **Delta Lake** | ACID-compliant storage for all patient, visit, triage, immunization, and scheme data (7 tables) |
+| **Unity Catalog** | Data governance — `workspace.asha_copilot` managed schema |
+| **Databricks SQL** | Spark SQL analytical queries powering the supervisor dashboard |
+| **Databricks Apps** | Production deployment of Gradio UI via `app.yaml` manifest |
+| **Databricks Repos** | Git-integrated notebooks synced from GitHub |
+| **Databricks Secret Scopes** | Secure API key management (scope: `asha-ai`) |
+| **Databricks Connect** | Remote Spark session access (`databricks-connect>=15.4.0`) |
+| **DBFS** | Persistent storage for NHM protocol PDFs and FAISS index |
+| **Serverless Compute** | On-demand Spark sessions for notebook and app execution |
+
+## Open-Source Models & APIs
+
+| Component | Technology | Notes |
+|-----------|-----------|-------|
+| **Primary LLM** | Sarvam-m (30B) via Sarvam AI API | Multilingual, strong Hindi, no local GPU |
+| **LLM Fallback** | Llama 3.3 70B via Groq API | High-throughput fallback |
+| **Translation** | Sarvam Mayura API (fallback: IndicTrans2) | Hindi ↔ English |
+| **ASR** | Sarvam Saarika API (fallback: IndicWhisper) | Hindi speech-to-text |
+| **TTS** | Sarvam Bulbul v2 API (fallback: gTTS) | Natural Hindi voice |
+| **Embeddings** | all-MiniLM-L6-v2 (sentence-transformers) | 384-dim, CPU-friendly, ~80 MB |
+| **Vector Search** | FAISS (CPU) | In-memory, persisted to DBFS |
+| **UI** | Gradio 4.44 + Plotly | Tabbed interface + interactive charts |
+
+### Resource Budget
+
+| Component | Disk | RAM | GPU |
+|-----------|------|-----|-----|
+| Sarvam AI APIs (LLM + Translation + ASR + TTS) | 0 GB | 0 GB | None |
+| all-MiniLM-L6-v2 | ~80 MB | ~200 MB | None |
+| FAISS index | ~5 MB | ~50 MB | None |
+| **Total** | **~85 MB** | **~250 MB** | **None** |
+
+---
 
 ## Key Features
 
 | Feature | Description | ML Model |
 |---------|-------------|----------|
-| **Voice-Driven CRUD** | ASHA speaks in Hindi to add patients, log visits, update records | Sarvam-m (entity extraction) |
+| **Voice-Driven CRUD** | ASHA speaks Hindi to add patients, log visits, update records | Sarvam-m (entity extraction) |
 | **Clinical Triage** | ML-primary risk classification (RED/YELLOW/GREEN) with doctor & PHC auto-assignment | Sarvam-m + rule-based fallback |
 | **Protocol RAG** | Q&A grounded in NHM/SUMAN clinical guidelines | FAISS + MiniLM-L6-v2 + Sarvam-m |
 | **Scheme Eligibility** | PMMVY, JSY, JSSK evaluation with missing document tracking | ML-assisted + rule fallback |
 | **Immunization Tracker** | UIP schedule monitoring, overdue flagging, dropout analysis | Rule-based with Delta queries |
 | **Supervisor Dashboard** | Real-time risk heatmaps, coverage charts, ASHA activity metrics | Plotly + Gradio |
 
-## Tech Stack
-
-| Component | Technology | Notes |
-|-----------|-----------|-------|
-| **Platform** | Databricks (workspace catalog) | Serverless-compatible |
-| **Storage** | Delta Lake (workspace.asha_copilot) | Unity Catalog |
-| **Primary LLM** | sarvam-30b via Sarvam AI API | 30B multilingual model, strong Hindi, no local GPU needed |
-| **Translation** | Sarvam Mayura API | Hindi ↔ English |
-| **ASR** | Sarvam Saarika API | Hindi speech-to-text |
-| **TTS** | Sarvam Bulbul v2 API | Natural Hindi voice |
-| **Embeddings** | all-MiniLM-L6-v2 (auto-download ~80 MB) | 384-dim, CPU-friendly |
-| **Vector Search** | FAISS (CPU) | In-memory, persisted to Workspace |
-| **UI** | Gradio | In-notebook, no separate server |
-
-### Resource Budget
-
-| Component | Local Disk | RAM | Purpose |
-|-----------|-----------|-----|---------|
-| Sarvam AI API (LLM + Translation + TTS + ASR) | 0 GB | 0 GB | All AI inference via API |
-| all-MiniLM-L6-v2 | ~80 MB | ~200 MB | RAG embeddings only |
-| FAISS index | ~5 MB | ~50 MB | Vector search over NHM protocols |
-| **Total** | **~85 MB** | **~250 MB** | Minimal local footprint |
-
 ---
 
-## Databricks Setup Guide
+## How to Run
 
 ### Prerequisites
 
-- A Databricks account (Free Edition works)
-- A GitHub account (to clone this repo)
+- A Databricks account ([Free Edition](https://www.databricks.com/try-databricks) works)
+- A GitHub account
 - **Sarvam AI API key** — get one at [sarvam.ai](https://www.sarvam.ai) (free tier available)
-- Optional: Hugging Face token (for ASR + LLM fallback)
+- Optional: HuggingFace token (for fallback ASR + LLM)
 
-### Step 1: Create Databricks Workspace
+### Step 1: Clone into Databricks
 
-1. Go to [Databricks Free Edition](https://www.databricks.com/try-databricks) and sign up
-2. Select your cloud provider and create a workspace
-3. Wait for the workspace to be provisioned
+```
+Databricks Workspace → Repos → Add Repo
+Git URL: https://github.com/pinakinchoudhary/asha-ai.git
+→ Click "Create Repo"
+```
 
-### Step 2: Clone Repository into Databricks
+### Step 2: Set Environment Variables
 
-1. In Databricks, go to **Workspace** > **Repos** (left sidebar)
-2. Click **Add Repo**
-3. Enter the Git URL: `https://github.com/pinakinchoudhary/asha-ai.git`
-4. Click **Create Repo**
-5. The entire project structure will be available under `/Workspace/Repos/<your-username>/asha-ai/`
+In **Compute → Edit → Advanced → Environment variables**:
+
+```bash
+SARVAM_API_KEY=your_sarvam_key_here    # Required
+HF_TOKEN=hf_your_token_here            # Optional fallback
+```
 
 ### Step 3: Upload NHM Protocol PDFs (Optional, for RAG)
 
-Download any of these NHM protocol PDFs and upload to DBFS:
-
-- [Handbook for ASHA Facilitators (HBNC/HBYC)](https://nhsrcindia.org/sites/default/files/2022-02/Handbook%20for%20ASHA%20Facilitators%20and%20MPWs%20on%20HBNC%20and%20HBYC.pdf)
-- [ASHA Module 6: Skills that Save Lives](https://nrhmmanipur.org/wp-content/uploads/2011/01/ASHA-Module-6.pdf)
-- [Routine Immunization Handbook](https://cdn.who.int/media/docs/default-source/searo/india/publications/immunization-handbook-1-106-part1.pdf)
-
-Upload via a notebook cell:
 ```python
-# Upload from your local machine to DBFS
-import urllib.request
-import os
-
+import urllib.request, os
 os.makedirs("/dbfs/FileStore/asha_copilot/protocols", exist_ok=True)
-
-urls = {
-    "ASHA_Handbook_HBNC_HBYC.pdf": "https://nhsrcindia.org/sites/default/files/2022-02/Handbook%20for%20ASHA%20Facilitators%20and%20MPWs%20on%20HBNC%20and%20HBYC.pdf",
-}
+urls = {"ASHA_Handbook_HBNC_HBYC.pdf": "https://nhsrcindia.org/sites/default/files/2022-02/Handbook%20for%20ASHA%20Facilitators%20and%20MPWs%20on%20HBNC%20and%20HBYC.pdf"}
 for fname, url in urls.items():
     path = f"/dbfs/FileStore/asha_copilot/protocols/{fname}"
-    if not os.path.exists(path):
-        urllib.request.urlretrieve(url, path)
-        print(f"Downloaded: {fname}")
+    if not os.path.exists(path): urllib.request.urlretrieve(url, path); print(f"Downloaded: {fname}")
 ```
 
-### Step 4: Set Environment Variables (Optional)
+### Step 4: Run Notebooks in Order
 
-Set these in your Databricks cluster **Environment Variables** (Compute → Edit → Advanced → Environment variables) for persistence across restarts:
-
-```
-SARVAM_API_KEY=your_sarvam_key_here    # Required — get at sarvam.ai
-HF_TOKEN=hf_your_token_here            # Optional — HF API fallback for ASR
-```
-
-Or set them at the top of notebook `02_install_models` for a single session.
-
-### Step 5: Run Notebooks in Order
-
-Navigate to the `notebooks/` folder in your cloned repo and run each notebook sequentially:
+Navigate to `notebooks/` and run each sequentially:
 
 | # | Notebook | What it does | Time |
 |---|----------|-------------|------|
@@ -169,46 +188,62 @@ Navigate to the `notebooks/` folder in your cloned repo and run each notebook se
 | 08 | `08_copilot_app` | **Main demo** — full Gradio app with all features | Interactive |
 | 09 | `09_supervisor_dashboard` | Supervisor analytics dashboard | Interactive |
 
-### Step 6: Run the Demo
+### Step 5: Launch the Demo
 
-1. Run notebook **08_copilot_app** — this launches the interactive Gradio app
-2. Use the **Voice Copilot** tab to chat in Hindi/English
-3. Use the **Triage** tab to input vitals and see risk classification + doctor assignment
-4. Use the **Patient CRUD** tab to add patients via natural language
-5. Run notebook **09_supervisor_dashboard** for the analytics overview
+```
+Run notebook 08_copilot_app → Gradio app launches in-notebook
+Run notebook 09_supervisor_dashboard → Analytics dashboard launches
+```
+
+### Running Tests Locally
+
+```bash
+pip install pyyaml pytest
+pytest tests/ -v
+```
 
 ---
 
-## Demo Script (for Hackathon Judges)
+## Demo Steps
 
 ### 1. Voice-Driven Patient Registration (Notebook 08, Tab: Patient CRUD)
+
 ```
-Input: "Naya patient register karo — Sunita Devi, umra 24, gaon Rampur, BPL card hai, Aadhaar hai"
+Click "Record" → Speak: "Naya patient register karo — Sunita Devi, umra 24, gaon Rampur, BPL card hai, Aadhaar hai"
+→ Click "Send Voice"
 → System extracts entities, writes to Delta table, confirms in Hindi
 ```
 
 ### 2. Voice-Driven Visit Logging + Auto-Triage (Notebook 08, Tab: Voice Copilot)
+
 ```
-Input: "Sunita Devi ka checkup — BP 155/100, hemoglobin 6.5, tez sir dard aur pair sooje hain"
+Click "Record" → Speak: "Sunita Devi ka checkup — BP 155/100, hemoglobin 6.5, tez sir dard aur pair sooje hain"
+→ Click "Send Voice"
 → System logs visit → ML triage: RED → Assigns Dr. Meena Tripathi at District Hospital Varanasi
-→ Response: "ATYANT ZARURI — Pre-eclampsia + severe anemia. District Hospital Varanasi bhejein. Dr. Meena Tripathi, Phone: +91-9876543005"
+→ Response: "ATYANT ZARURI — Pre-eclampsia + severe anemia. District Hospital Varanasi bhejein."
 ```
 
 ### 3. Scheme Eligibility Check (Notebook 08, Tab: Scheme Checker)
+
 ```
-Input: Patient name "Sunita"
+Type patient name: "Sunita"
+→ Click "Check Eligibility"
 → PMMVY: Eligible (Rs 5,000) | JSY: Eligible (Rs 1,400 — UP is LPS) | JSSK: Eligible (free delivery)
 ```
 
 ### 4. Protocol Q&A (Notebook 08, Tab: Protocol Q&A)
+
 ```
-Input: "What are the danger signs during pregnancy?"
-→ RAG retrieves from NHM protocol PDFs → Grounded answer with sources
+Type: "What are the danger signs during pregnancy?"
+→ Click "Ask"
+→ RAG retrieves from NHM protocol PDFs → Grounded answer with source attribution
 ```
 
 ### 5. Supervisor Dashboard (Notebook 09)
+
 ```
-→ KPI cards: Total patients, Red alerts, Overdue vaccines
+Run notebook → Dashboard auto-loads with:
+→ KPI cards: Total patients, RED alerts, Overdue vaccines
 → Risk pie chart (RED/YELLOW/GREEN distribution)
 → Village-level stacked bar chart
 → Immunization coverage by vaccine
@@ -223,26 +258,34 @@ Input: "What are the danger signs during pregnancy?"
 asha-ai/
 ├── README.md
 ├── requirements.txt
-├── .gitignore
+├── app.yaml                         # Databricks Apps deployment manifest
 ├── config/
-│   ├── settings.py              # Central configuration
-│   ├── danger_signs.yaml        # Clinical triage rules (SUMAN/NHM)
-│   └── phc_doctors.yaml         # PHC facilities + doctor registry
-├── data/nhm_protocols/          # Upload NHM PDFs here
+│   ├── settings.py                  # Central configuration
+│   ├── danger_signs.yaml            # Clinical triage rules (SUMAN/NHM)
+│   └── phc_doctors.yaml             # PHC facilities + doctor registry
+├── data/nhm_protocols/              # Upload NHM PDFs here
+├── docs/                            # Detailed use case documentation
+│   ├── 01_architecture_overview.md
+│   ├── 02_tech_stack.md
+│   ├── 03_voice_patient_management.md
+│   ├── 04_clinical_triage.md
+│   ├── 05_protocol_rag.md
+│   ├── 06_scheme_eligibility.md
+│   ├── 07_immunization_tracker.md
+│   └── 08_supervisor_dashboard.md
 ├── src/
 │   ├── models/
-│   │   ├── indic_llm.py         # Airavata/Param-1 GGUF wrapper
-│   │   ├── indic_translate.py   # IndicTrans2 translator
-│   │   ├── indic_asr.py         # IndicWhisper ASR
-│   │   └── indic_tts.py         # TTS (Sarvam/gTTS)
-│   ├── synthetic_data.py        # NFHS-5 calibrated data generators
-│   ├── triage_engine.py         # ML triage + doctor/PHC assignment
-│   ├── scheme_eligibility.py    # PMMVY/JSY/JSSK eligibility
-│   ├── rag_pipeline.py          # FAISS RAG over NHM protocols
-│   ├── voice_db_agent.py        # Voice-driven CRUD agent
-│   ├── voice_pipeline.py        # End-to-end voice orchestration
-│   └── dashboard_helpers.py     # Dashboard query utilities
-├── notebooks/                   # Databricks notebooks (run in order)
+│   │   ├── indic_llm.py             # LLM wrapper (Groq/Sarvam/HF)
+│   │   ├── indic_translate.py       # Translation (Sarvam Mayura/HF)
+│   │   ├── indic_asr.py             # ASR (Sarvam Saarika/HF)
+│   │   └── indic_tts.py             # TTS (Sarvam Bulbul/gTTS)
+│   ├── triage_engine.py             # ML triage + doctor/PHC assignment
+│   ├── scheme_eligibility.py        # PMMVY/JSY/JSSK eligibility
+│   ├── rag_pipeline.py              # FAISS RAG over NHM protocols
+│   ├── voice_db_agent.py            # Voice-driven CRUD agent
+│   ├── voice_pipeline.py            # End-to-end voice orchestration
+│   └── dashboard_helpers.py         # Dashboard query utilities
+├── notebooks/                       # Databricks notebooks (run in order)
 │   ├── 00_setup_database.py
 │   ├── 01_generate_synthetic_data.py
 │   ├── 02_install_models.py
@@ -251,17 +294,12 @@ asha-ai/
 │   ├── 05_voice_crud_demo.py
 │   ├── 06_scheme_eligibility_demo.py
 │   ├── 07_immunization_tracker.py
-│   ├── 08_copilot_app.py        # Main demo app
+│   ├── 08_copilot_app.py            # Main demo app
 │   └── 09_supervisor_dashboard.py
+├── app/
+│   └── main.py                      # Databricks App entrypoint
 └── tests/
-    └── test_triage.py           # pytest (runs locally)
-```
-
-## Running Tests Locally
-
-```bash
-pip install pyyaml pytest
-pytest tests/ -v
+    └── test_triage.py               # pytest (runs locally)
 ```
 
 ---
@@ -284,6 +322,21 @@ pytest tests/ -v
 | [NFHS-5 Factsheets](https://dhsprogram.com/pubs/pdf/FR375/FR375.pdf) | Synthetic data calibration |
 | [UIP Schedule (WHO India)](https://cdn.who.int/media/docs/default-source/searo/india/publications/immunization-handbook-1-106-part1.pdf) | Immunization tracking |
 | [PMMVY](https://pmmvy.wcd.gov.in/) / [JSY](https://www.myscheme.gov.in/schemes/jsy1) / [JSSK](https://www.myscheme.gov.in/schemes/jssk) | Scheme eligibility rules |
+
+---
+
+## Detailed Documentation
+
+See the [docs/](./docs/) folder for in-depth documentation on each use case:
+
+- [Architecture Overview](./docs/01_architecture_overview.md) — Full system architecture with component diagrams
+- [Tech Stack](./docs/02_tech_stack.md) — Databricks technologies, open-source models, APIs
+- [Voice Patient Management](./docs/03_voice_patient_management.md) — Voice CRUD data flow and design
+- [Clinical Triage](./docs/04_clinical_triage.md) — ML-primary triage with safety-first fallback
+- [Protocol RAG](./docs/05_protocol_rag.md) — NHM protocol Q&A via FAISS + LLM
+- [Scheme Eligibility](./docs/06_scheme_eligibility.md) — PMMVY/JSY/JSSK eligibility engine
+- [Immunization Tracker](./docs/07_immunization_tracker.md) — UIP schedule monitoring and dropout analysis
+- [Supervisor Dashboard](./docs/08_supervisor_dashboard.md) — Real-time analytics for supervisors
 
 ---
 

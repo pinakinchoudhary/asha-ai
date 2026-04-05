@@ -110,8 +110,8 @@ def make_scheme_bar():
     return fig
 
 
-with gr.Blocks(title="ASHA Supervisor Dashboard", theme=gr.themes.Soft()) as dashboard:
-    gr.Markdown("# ASHA Copilot — Supervisor Dashboard")
+with gr.Blocks(title="Asha AI — Supervisor Dashboard", theme=gr.themes.Soft()) as dashboard:
+    gr.Markdown("# Asha AI — Supervisor Dashboard")
     gr.Markdown("Real-time overview of maternal & child health indicators across your jurisdiction")
 
     # ---- KPI Cards ----
