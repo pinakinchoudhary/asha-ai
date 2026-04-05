@@ -177,36 +177,21 @@ def build_app(spark):
         tts_audio = _wav_bytes_to_numpy(response.audio_bytes)
         return history, "", tts_audio
 
-    # ── FIX: capture audio into State first, then process ────────────────────
-    #
-    # Root cause: Gradio resets gr.Audio to None immediately after stop_recording
-    # fires (for UX — so the widget is ready for the next recording). If the
-    # server hasn't read mic_input yet, it sees the cleared (empty) value.
-    #
-    # Fix: chain two events —
-    #   1. _capture_audio  →  runs instantly at stop time, saves audio to State
-    #   2. voice_chat      →  reads from State (never None) + clears State after
-    #
-    def _capture_audio(audio_tuple):
-        """Step 1: snapshot the audio into State before Gradio resets the widget."""
-        return audio_tuple  # just pass it through to gr.State
-
     def voice_chat(audio_tuple, language, history):
-        """Step 2: transcribe from State → pipeline → chatbot + TTS."""
+        """Transcribe audio → pipeline → chatbot + TTS.
+
+        Returns (chatbot, tts_audio, None) — the third None explicitly
+        clears mic_input so Gradio doesn't show stale audio.
+        """
         if audio_tuple is None:
-            # State was never set (e.g. user clicked stop without recording)
-            return history, None
+            return history, None, None
         lang_code = "hi" if language == "Hindi" else "en"
         text = asr.transcribe_from_gradio(audio_tuple, lang_code)
         if not text or not text.strip():
             history.append(("🎤 (audio)", "Could not transcribe. Please speak clearly and try again."))
-            return history, None
+            return history, None, None
         new_history, _, tts_audio = copilot_chat(text, language, history)
-        return new_history, tts_audio
-
-    def _clear_audio_state():
-        """Step 3: reset State after processing so stale audio isn't reused."""
-        return None
+        return new_history, tts_audio, None
 
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -297,10 +282,6 @@ def build_app(spark):
             lang_select = gr.Radio(["Hindi", "English"], value="Hindi", label="Language")
             chatbot = gr.Chatbot(height=400)
 
-            # State that holds the recorded audio snapshot — survives the
-            # gr.Audio widget reset that causes the empty-audio bug.
-            audio_state = gr.State(None)
-
             # ── Voice input ───────────────────────────────────────────────
             gr.Markdown("#### 🎤 Voice Input — Sarvam Saarika ASR (auto-sends on stop)")
             mic_input = gr.Audio(
@@ -322,32 +303,13 @@ def build_app(spark):
                 interactive=False,
             )
 
-            # ── Event chain (THE FIX) ─────────────────────────────────────
-            #
-            # stop_recording fires with the audio value at that instant.
-            # Step 1: immediately snapshot it into audio_state.
-            # Step 2: .then() chains off step 1 — reads from audio_state,
-            #         which is already frozen and won't be cleared by the
-            #         widget reset happening in parallel.
-            # Step 3: clear audio_state so a future empty stop doesn't
-            #         accidentally replay the previous recording.
-            #
-            (
-                mic_input.stop_recording(
-                    _capture_audio,
-                    inputs=[mic_input],
-                    outputs=[audio_state],
-                )
-                .then(
-                    voice_chat,
-                    inputs=[audio_state, lang_select, chatbot],
-                    outputs=[chatbot, tts_output],
-                )
-                .then(
-                    _clear_audio_state,
-                    inputs=[],
-                    outputs=[audio_state],
-                )
+            # Auto-submit when user stops recording.
+            # mic_input is both an input (audio captured at event-fire time)
+            # and an output (returning None clears the widget explicitly).
+            mic_input.stop_recording(
+                voice_chat,
+                inputs=[mic_input, lang_select, chatbot],
+                outputs=[chatbot, tts_output, mic_input],
             )
 
             msg_input.submit(
