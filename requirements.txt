@@ -15,7 +15,9 @@ databricks-connect>=15.4.0
 # ── ML / Vector search ──────────────────────────────────────────────────────
 # faiss-cpu 1.8+ requires NumPy 2 which conflicts with Databricks runtime.
 faiss-cpu>=1.7.0,<1.8
-sentence-transformers==2.2.2
+# 2.2.x imports `cached_download` from huggingface-hub which was removed in 0.16.
+# 2.6+ no longer has this dependency and is compatible with huggingface-hub~=0.35.3.
+sentence-transformers>=2.6.0,<3.0
 numpy>=1.24,<2
 
 # ── RAG ─────────────────────────────────────────────────────────────────────
