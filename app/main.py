@@ -51,90 +51,116 @@ import gradio as gr  # noqa: E402
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Browser-side audio recorder (pure JS — no gr.Audio involved)
-# Uses Web Audio API → 16 kHz mono 16-bit PCM → WAV → base64.
-# Stores result in window.__asha_wav_b64 for the Send Voice button.
+# Browser-side audio recorder (pure JS — no gr.Audio involved).
+#
+# gr.HTML sanitises away <script> and onclick, so:
+#   _RECORDER_HEAD  → injected via gr.Blocks(head=...) — unsanitised <script>
+#   _RECORDER_UI    → rendered via gr.HTML() — plain HTML only, no JS
+#
+# The script attaches its click handler programmatically once the button
+# exists in the DOM (MutationObserver fallback with polling).
 # ---------------------------------------------------------------------------
-_RECORDER_HTML = """
-<div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
-  <button id="asha-rec-btn"
-    style="padding:10px 24px;font-size:15px;border-radius:8px;border:none;
-           background:#2563eb;color:#fff;cursor:pointer;font-weight:600;"
-    onclick="window.__ashaToggleRec()">
-    Start Recording
-  </button>
-  <span id="asha-rec-status" style="font-size:14px;color:#666;">
-    Ready to record
-  </span>
-</div>
+
+_RECORDER_HEAD = """
 <script>
 (function(){
   var ctx, stream, src, proc, chunks, recording=false, sr=16000;
   window.__asha_wav_b64 = '';
 
   window.__ashaToggleRec = async function(){
-    var btn=document.getElementById('asha-rec-btn'),
-        st=document.getElementById('asha-rec-status');
-    if(!recording){
-      try{
-        ctx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:sr});
-        sr = ctx.sampleRate;                       // actual rate browser gave us
-        stream = await navigator.mediaDevices.getUserMedia({audio:true});
-        src = ctx.createMediaStreamSource(stream);
-        proc = ctx.createScriptProcessor(4096,1,1);
+    var btn = document.getElementById('asha-rec-btn');
+    var st  = document.getElementById('asha-rec-status');
+    if (!btn || !st) return;
+
+    if (!recording) {
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: sr});
+        sr = ctx.sampleRate;
+        stream = await navigator.mediaDevices.getUserMedia({audio: true});
+        src  = ctx.createMediaStreamSource(stream);
+        proc = ctx.createScriptProcessor(4096, 1, 1);
         chunks = [];
         proc.onaudioprocess = function(e){
-          if(recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+          if (recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
         };
-        src.connect(proc); proc.connect(ctx.destination);
+        src.connect(proc);
+        proc.connect(ctx.destination);
         recording = true;
         btn.textContent = 'Stop Recording';
         btn.style.background = '#dc2626';
-        st.textContent = 'Recording\u2026';
-        st.style.color = '#dc2626';
-      }catch(err){
-        st.textContent = 'Mic error: '+err.message;
+        st.textContent  = 'Recording…';
+        st.style.color   = '#dc2626';
+      } catch(err) {
+        st.textContent = 'Mic error: ' + err.message;
         st.style.color = '#dc2626';
       }
     } else {
       recording = false;
-      proc.disconnect(); src.disconnect();
-      stream.getTracks().forEach(function(t){t.stop();});
-      // concat PCM
-      var len=0; chunks.forEach(function(c){len+=c.length;});
-      var pcm=new Float32Array(len), off=0;
-      chunks.forEach(function(c){pcm.set(c,off);off+=c.length;});
-      // float32 → int16
-      var i16=new Int16Array(pcm.length);
-      for(var i=0;i<pcm.length;i++){
-        var s=pcm[i]<-1?-1:pcm[i]>1?1:pcm[i];
-        i16[i]=s<0?s*32768:s*32767;
+      if (proc) proc.disconnect();
+      if (src)  src.disconnect();
+      if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+      var len = 0;
+      chunks.forEach(function(c){ len += c.length; });
+      var pcm = new Float32Array(len), off = 0;
+      chunks.forEach(function(c){ pcm.set(c, off); off += c.length; });
+      var i16 = new Int16Array(pcm.length);
+      for (var i = 0; i < pcm.length; i++) {
+        var s = pcm[i] < -1 ? -1 : pcm[i] > 1 ? 1 : pcm[i];
+        i16[i] = s < 0 ? s * 32768 : s * 32767;
       }
-      // build WAV
-      var nb=44+i16.length*2, buf=new ArrayBuffer(nb), v=new DataView(buf);
-      function ws(o,s){for(var j=0;j<s.length;j++)v.setUint8(o+j,s.charCodeAt(j));}
-      ws(0,'RIFF'); v.setUint32(4,nb-8,true); ws(8,'WAVE');
-      ws(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true);
-      v.setUint16(22,1,true); v.setUint32(24,sr,true);
-      v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
-      ws(36,'data'); v.setUint32(40,i16.length*2,true);
-      for(var i=0;i<i16.length;i++) v.setInt16(44+i*2,i16[i],true);
-      // to base64
-      var bytes=new Uint8Array(buf), bin='';
-      for(var i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+      var nb  = 44 + i16.length * 2;
+      var buf = new ArrayBuffer(nb);
+      var v   = new DataView(buf);
+      function ws(o, s){ for (var j=0;j<s.length;j++) v.setUint8(o+j, s.charCodeAt(j)); }
+      ws(0,'RIFF'); v.setUint32(4, nb-8, true); ws(8,'WAVE');
+      ws(12,'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+      v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+      v.setUint32(28, sr*2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+      ws(36,'data'); v.setUint32(40, i16.length*2, true);
+      for (var i = 0; i < i16.length; i++) v.setInt16(44 + i*2, i16[i], true);
+      var bytes = new Uint8Array(buf), bin = '';
+      for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
       window.__asha_wav_b64 = btoa(bin);
-      var durSec=(pcm.length/sr).toFixed(1);
-      var sizeKb=(nb/1024).toFixed(0);
-      ctx.close();
-      btn.textContent='Start Recording';
-      btn.style.background='#2563eb';
-      st.textContent=durSec+'s recorded ('+sizeKb+' KB) \u2014 click Send Voice';
-      st.style.color='#16a34a';
+      var durSec = (pcm.length / sr).toFixed(1);
+      var sizeKb = (nb / 1024).toFixed(0);
+      if (ctx.state !== 'closed') ctx.close();
+      btn.textContent = 'Start Recording';
+      btn.style.background = '#2563eb';
+      st.textContent = durSec + 's recorded (' + sizeKb + ' KB) — click Send Voice';
+      st.style.color = '#16a34a';
     }
   };
+
+  /* Attach click handler once the button exists in the DOM */
+  function attach(){
+    var btn = document.getElementById('asha-rec-btn');
+    if (btn && !btn._asha) {
+      btn._asha = true;
+      btn.addEventListener('click', window.__ashaToggleRec);
+    }
+  }
+  var iv = setInterval(function(){ attach(); }, 300);
+  document.addEventListener('DOMContentLoaded', attach);
+  if (typeof MutationObserver !== 'undefined') {
+    new MutationObserver(attach).observe(document.body || document.documentElement,
+      {childList: true, subtree: true});
+  }
 })();
 </script>
 """
+
+_RECORDER_UI = (
+    '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;">'
+    '  <button id="asha-rec-btn"'
+    '    style="padding:10px 24px;font-size:15px;border-radius:8px;border:none;'
+    '           background:#2563eb;color:#fff;cursor:pointer;font-weight:600;">'
+    '    Start Recording'
+    '  </button>'
+    '  <span id="asha-rec-status" style="font-size:14px;color:#666;">'
+    '    Ready to record'
+    '  </span>'
+    '</div>'
+)
 
 _SECRETS_SCOPE = "asha-ai"
 _SECRET_KEYS = {
@@ -386,7 +412,7 @@ def build_app(spark):
 
     # ── UI ───────────────────────────────────────────────────────────────────
 
-    with gr.Blocks(theme=gr.themes.Soft(), title="ASHA Copilot") as demo:
+    with gr.Blocks(theme=gr.themes.Soft(), title="ASHA Copilot", head=_RECORDER_HEAD) as demo:
         gr.Markdown("# ASHA Copilot — AI-Powered Maternal & Child Healthcare Assistant")
         gr.Markdown("Voice-first, multilingual field assistant for India's community health workers")
 
@@ -400,7 +426,7 @@ def build_app(spark):
             # encodes it as a WAV, base64-encodes it, and stores it in
             # window.__asha_wav_b64.  The Send Voice button's js=
             # parameter injects that value into voice_turn_b64().
-            gr.HTML(_RECORDER_HTML)
+            gr.HTML(_RECORDER_UI)
             audio_b64 = gr.Textbox(value="", visible=False)
             voice_btn = gr.Button("Send Voice", variant="primary")
 
