@@ -333,5 +333,24 @@ with gr.Blocks(
 
 # COMMAND ----------
 
+# Download missing frpc tunnel binary for aarch64 (ARM64) Databricks clusters.
+# share=True requires this binary; it's not bundled in the gradio wheel for this arch.
+import importlib.util, os, stat, urllib.request
+
+_gradio_dir = os.path.dirname(importlib.util.find_spec("gradio").origin)
+_frpc_path = os.path.join(_gradio_dir, "frpc_linux_aarch64_v0.2")
+if not os.path.exists(_frpc_path):
+    print("Downloading frpc tunnel binary for aarch64...")
+    urllib.request.urlretrieve(
+        "https://cdn-media.huggingface.co/frpc-gradio-0.2/frpc_linux_aarch64",
+        _frpc_path,
+    )
+    os.chmod(_frpc_path, os.stat(_frpc_path).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    print(f"frpc binary ready at {_frpc_path}")
+else:
+    print("frpc binary already present.")
+
+# COMMAND ----------
+
 app.queue()
 app.launch(share=True)
