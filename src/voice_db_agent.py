@@ -131,7 +131,8 @@ class VoiceDBAgent:
 
         if self.spark:
             try:
-                df = self.spark.createDataFrame([row])
+                table_schema = self.spark.table("workspace.asha_copilot.patients").schema
+                df = self.spark.createDataFrame([row], schema=table_schema)
                 df.write.format("delta").mode("append").saveAsTable(
                     "workspace.asha_copilot.patients"
                 )
@@ -192,7 +193,8 @@ class VoiceDBAgent:
 
         if self.spark:
             try:
-                df = self.spark.createDataFrame([row])
+                table_schema = self.spark.table("workspace.asha_copilot.visits").schema
+                df = self.spark.createDataFrame([row], schema=table_schema)
                 df.write.format("delta").mode("append").saveAsTable(
                     "workspace.asha_copilot.visits"
                 )

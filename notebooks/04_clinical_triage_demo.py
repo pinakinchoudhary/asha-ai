@@ -78,8 +78,8 @@ print(f"Total visits to triage: {visits_with_context.count()}")
 
 # COMMAND ----------
 
-# Process a sample of visits (full dataset can be done in production)
-sample_visits = visits_with_context.limit(100).collect()
+# Process a sample of visits for demo (full dataset can be done in production)
+sample_visits = visits_with_context.limit(25).collect()
 
 triage_results = []
 for visit in sample_visits:
