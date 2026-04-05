@@ -22,8 +22,6 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data files (user must upload manually)
-data/nhm_protocols/*.pdf
 
 # Model artifacts
 *.gguf

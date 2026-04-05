@@ -1,7 +1,7 @@
 """
 Unified Indic LLM interface.
 
-Primary: Sarvam AI API (sarvam-2.0-flash — 30B multilingual, strong Hindi support)
+Primary: Groq API (llama-3.3-70b-versatile — fast, strong multilingual/Hindi support)
 Fallback: Hugging Face Inference Router API
 """
 
@@ -11,21 +11,20 @@ import os
 
 logger = logging.getLogger(__name__)
 
-SARVAM_API_BASE = "https://api.sarvam.ai"
-SARVAM_LLM_MODEL = "sarvam-30b"
+GROQ_API_BASE = "https://api.groq.com/openai"
+GROQ_LLM_MODEL = "llama-3.3-70b-versatile"  # swap: mixtral-8x7b-32768, gemma2-9b-it
 _SECRETS_SCOPE = "asha-ai"
 
 
 def _get_api_key(env_var: str, secret_key: str) -> str:
     """
     Retrieve an API key.
-    Priority: environment variable → Databricks secrets scope 'asha-copilot'.
+    Priority: environment variable → Databricks secrets scope 'asha-ai'.
     Caches the secret in os.environ so subsequent calls are fast.
     """
     val = os.environ.get(env_var, "")
     if val:
         return val
-    # Try Databricks secrets (dbutils lives in the IPython user namespace)
     try:
         import IPython
         _ip = IPython.get_ipython()
@@ -34,7 +33,7 @@ def _get_api_key(env_var: str, secret_key: str) -> str:
             if _dbutils:
                 secret = _dbutils.secrets.get(scope=_SECRETS_SCOPE, key=secret_key)
                 if secret:
-                    os.environ[env_var] = secret  # cache for the session
+                    os.environ[env_var] = secret
                     return secret
     except Exception:
         pass
@@ -42,61 +41,61 @@ def _get_api_key(env_var: str, secret_key: str) -> str:
 
 
 class IndicLLM:
-    """Wrapper around Sarvam AI API (sarvam-2.0-flash) with HF fallback."""
+    """Wrapper around Groq API with HuggingFace fallback."""
 
     def __init__(self, model_path: str = None, n_ctx: int = 2048, n_threads: int = 4):
-        # model_path is ignored — Sarvam API is used instead of local GGUF
-        self._sarvam_key = _get_api_key("SARVAM_API_KEY", "sarvam-api-key")
+        # model_path is ignored — Groq API is used instead of local GGUF
+        self._groq_key = _get_api_key("GROQ_API_KEY", "groq-api-key")
         self._hf_key = _get_api_key("HF_TOKEN", "hf-token")
-        if not self._sarvam_key:
+        if not self._groq_key:
             logger.warning(
-                "SARVAM_API_KEY not set. Configure via: (1) Databricks secrets scope "
-                "'asha-copilot' key 'sarvam-api-key', or (2) cluster Environment Variables, "
-                "or (3) os.environ['SARVAM_API_KEY'] = '<key>'. "
+                "GROQ_API_KEY not set. Configure via: (1) Databricks secrets scope "
+                "'asha-ai' key 'groq-api-key', or (2) cluster Environment Variables, "
+                "or (3) os.environ['GROQ_API_KEY'] = '<key>'. "
                 "Falling back to HuggingFace Inference Router API."
             )
 
     @property
     def is_loaded(self) -> bool:
         """True if any API key is available."""
-        return bool(self._sarvam_key or self._hf_key)
+        return bool(self._groq_key or self._hf_key)
 
     def generate(self, prompt: str, max_tokens: int = 512, temperature: float = 0.3,
                  stop: list = None) -> str:
-        """Generate text from prompt using Sarvam API (falls back to HF API)."""
-        if self._sarvam_key:
-            result = self._generate_sarvam(prompt, max_tokens, temperature)
+        """Generate text from prompt using Groq API (falls back to HF API)."""
+        if self._groq_key:
+            result = self._generate_groq(prompt, max_tokens, temperature)
             if result:
                 return result
         return self._generate_hf_fallback(prompt, max_tokens, temperature)
 
-    def _generate_sarvam(self, prompt: str, max_tokens: int, temperature: float) -> str:
-        """Call Sarvam AI chat completions endpoint (OpenAI-compatible)."""
+    def _generate_groq(self, prompt: str, max_tokens: int, temperature: float) -> str:
+        """Call Groq chat completions endpoint (OpenAI-compatible)."""
         try:
             import requests
             resp = requests.post(
-                f"{SARVAM_API_BASE}/v1/chat/completions",
+                f"{GROQ_API_BASE}/v1/chat/completions",
                 headers={
-                    "api-subscription-key": self._sarvam_key,
+                    "Authorization": f"Bearer {self._groq_key}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": SARVAM_LLM_MODEL,
+                    "model": GROQ_LLM_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": max_tokens,
                     "temperature": temperature,
                 },
-                timeout=45,
+                timeout=30,
             )
             if resp.status_code == 200:
                 content = resp.json()["choices"][0]["message"].get("content")
                 if content is not None:
                     return content.strip()
-                logger.warning("Sarvam returned 200 but content is None (possible empty finish)")
+                logger.warning("Groq returned 200 but content is None")
             else:
-                logger.warning(f"Sarvam API returned {resp.status_code}: {resp.text[:300]}")
+                logger.warning(f"Groq API returned {resp.status_code}: {resp.text[:300]}")
         except Exception as e:
-            logger.warning(f"Sarvam API call failed: {e}")
+            logger.warning(f"Groq API call failed: {e}")
         return ""
 
     def _generate_hf_fallback(self, prompt: str, max_tokens: int, temperature: float) -> str:
@@ -106,7 +105,6 @@ class IndicLLM:
             return ""
         try:
             import requests
-            # HF Router — OpenAI-compatible chat completions
             resp = requests.post(
                 "https://router.huggingface.co/v1/chat/completions",
                 headers={
