@@ -61,6 +61,16 @@ except Exception:
     else:
         print("HF_TOKEN:        not set (optional — used as LLM/ASR fallback only)")
 
+try:
+    _groq = dbutils.secrets.get(scope="asha-ai", key="groq-api-key")
+    os.environ["GROQ_API_KEY"] = _groq
+    print("GROQ_API_KEY:    loaded from Databricks secrets scope 'asha-ai'")
+except Exception:
+    if os.environ.get("GROQ_API_KEY"):
+        print("GROQ_API_KEY:    loaded from cluster environment variable")
+    else:
+        print("GROQ_API_KEY:    not set (optional — used as LLM alternative)")
+
 print()
 print(f"SARVAM_API_KEY ready: {'YES' if os.environ.get('SARVAM_API_KEY') else 'NO'}")
 print(f"HF_TOKEN ready:       {'YES' if os.environ.get('HF_TOKEN') else 'NO (optional)'}")
@@ -154,7 +164,6 @@ print(f"Test vector (first 5): {test_embedding[0][:5].tolist()}")
 print("=" * 60)
 print("SETUP SUMMARY")
 print("=" * 60)
-print(f"  Sarvam AI API (sarvam-30b):{'✓ Connected' if llm.is_loaded else '✗ No API key'}")
 print(f"  Sarvam Translation (Mayura):     {'✓ Connected' if translator.is_loaded else '✗ No API key'}")
 print(f"  Sentence Embeddings (MiniLM):    ✓ Loaded ({test_embedding.shape[1]}-dim)")
 print()

@@ -12,6 +12,27 @@
 
 # COMMAND ----------
 
+# DBTITLE 1,Load API Keys
+import os
+
+# Load API keys from secrets (using same keys as notebook 02)
+try:
+    os.environ["SARVAM_API_KEY"] = dbutils.secrets.get(scope="asha-ai", key="sarvam-api-key")
+    print("✓ SARVAM_API_KEY loaded")
+except: pass
+
+try:
+    os.environ["HF_TOKEN"] = dbutils.secrets.get(scope="asha-ai", key="hf-token")
+    print("✓ HF_TOKEN loaded")
+except: pass
+
+try:
+    os.environ["GROQ_API_KEY"] = dbutils.secrets.get(scope="asha-ai", key="groq-api-key")
+    print("✓ GROQ_API_KEY loaded")
+except: pass
+
+# COMMAND ----------
+
 import sys, os, uuid
 from datetime import date
 
@@ -94,7 +115,12 @@ print(f"Triaged {len(triage_results)} visits")
 
 # COMMAND ----------
 
+from pyspark.sql.functions import col
+
 alerts_df = spark.createDataFrame(triage_results)
+# Cast columns to match existing table schema
+alerts_df = alerts_df.withColumn("urgency_hours", col("urgency_hours").cast("int")) \
+                     .withColumn("confidence", col("confidence").cast("float"))
 alerts_df.write.format("delta").mode("overwrite").saveAsTable(
     "workspace.asha_copilot.triage_alerts"
 )

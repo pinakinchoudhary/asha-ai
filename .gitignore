@@ -29,9 +29,6 @@ env/
 *.bin
 *.safetensors
 
-# FAISS index
-*.faiss
-
 # Databricks
 /dbfs/
 .databricks/
