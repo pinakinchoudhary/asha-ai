@@ -6,7 +6,6 @@ Asha AI is a voice-first, multilingual field assistant built on the Databricks L
 
 > *"If your solution only works on an A100, it does not work in India."*
 
----
 
 ## Project Write-Up
 
